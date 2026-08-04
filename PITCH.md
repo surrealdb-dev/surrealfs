@@ -20,9 +20,10 @@ The product promise is that a team can answer four expensive questions with evid
 3. **Fork:** Can we retry from the exact pre-action state without copying the whole workspace?
 4. **Prove:** Can we verify which principal, input, tool, policy, and model governed the transition?
 
-The recommended architecture is one embedded SurrealDB instance backed by SurrealKV, owned by one
-local daemon. Filesystem state, agent KV, execution records, graph relations, idempotency receipts,
-and branch heads move in one semantic transaction.
+The preferred proof architecture is one embedded SurrealDB instance backed by SurrealKV, owned by
+one local daemon. Filesystem state, agent KV, execution records, graph relations, immutable roots,
+idempotency receipts, and branch heads move in one semantic transaction. Phase 0 compares the same
+thin domain protocol with SQLite/AgentFS before the production adapter is selected.
 
 The investment recommendation is deliberately narrower than “match every AgentFS and TigerFS
 feature before launch”:
@@ -161,7 +162,7 @@ across real agent execution surfaces.
 Every durable action produces a portable receipt whose identity does not depend on SurrealDB:
 
 ```text
-principal + run + trace/span + tool + request digest
+principal + daemon-issued workspace capability + run + trace/span + tool + request digest
 before filesystem/KV root -> ordered mutations -> after filesystem/KV root
 observed inputs + produced artifacts + external-effect intentions
 policy/evaluation evidence + outcome + durability + optional signature/attestation
@@ -170,7 +171,14 @@ policy/evaluation evidence + outcome + durability + optional signature/attestati
 The receipt is committed with the state and branch head, links to OpenTelemetry trace identifiers, and
 can be independently verified from logical export. Higher-assurance deployments may sign receipts and
 anchor selected roots outside the repository. A timestamp-correlated trace is not equivalent to this
-receipt because it did not participate in publishing the state transition.
+receipt because it did not participate in publishing the state transition. Trace context provides
+interoperable correlation; it is never accepted as the authority to publish a workspace.
+
+The external portion is not a distributed-rollback claim. The standalone
+[external effects and recovery design](docs/16-external-effects-and-recovery.md) specifies durable
+intent-before-dispatch, capability-graded reconciliation, compensation, persistent divergence, and a
+combined recovery workflow that restores local state exactly without pretending to reverse the
+outside world.
 
 ## The moat
 
@@ -328,6 +336,10 @@ Commit a small senior team to produce:
 8. a shutdown/reopen/lock-release contract test using only public SDK APIs;
 9. a legal decision on the pinned SurrealDB distribution model;
 10. discovery evidence from 5–10 design partners, with at least three willing to test the prototype.
+
+The Phase 0 decision report must also compare building the primitive as an AgentFS extension with
+shipping a separate SurrealFS stack. Existing mounts, SDKs, migration cost, and distribution are part
+of the comparison, not sunk costs that the database benchmark may ignore.
 
 ### Approve next only if Phase 0 passes
 

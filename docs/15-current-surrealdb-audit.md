@@ -298,6 +298,7 @@ has been completed. A partial broad test invocation is deliberately not counted 
 | Is graceful awaited shutdown proven through public API? | No; this is a named gap |
 | Is SurrealKV production-certified for SurrealFS? | No; 0.21.3 is encouraging and must pass product fault/soak gates |
 | Does storage create the moat? | No; causal capture, workflows, ontology, integrations, and outcomes do |
+| Has SurrealDB/SurrealKV won the production adapter decision? | No; it is the preferred candidate and must pass the Phase 0 SQLite/AgentFS parity spike plus product gates |
 
 ## Revalidation checklist for the next engine pin
 

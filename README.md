@@ -1,8 +1,9 @@
 # SurrealFS
 
-SurrealFS is a proposed causal execution filesystem for AI agents. It combines a versioned
-filesystem, agent key-value state, tool-call provenance, artifacts, evaluations, policy decisions,
-snapshots, and forks in one embedded SurrealDB database backed by SurrealKV.
+SurrealFS is a proposed causal execution workspace for AI agents. It combines versioned filesystem
+and agent key-value state with tool provenance, artifacts, evaluations, policy decisions, snapshots,
+and forks. The preferred proof implementation is embedded SurrealDB backed by SurrealKV; production
+use of that engine remains conditional on Phase 0 evidence.
 
 The working thesis is simple:
 
@@ -26,7 +27,7 @@ Choose one path; you do not need to read every Markdown file:
 The [complete documentation guide](docs/README.md) explains how the design fits together and lists
 all reference documents by purpose.
 
-## Chosen architecture
+## Preferred proof architecture
 
 ```mermaid
 flowchart TB
@@ -38,21 +39,24 @@ flowchart TB
     K -. "portable logical export" .-> X["Engine-independent archive"]
 ```
 
-SurrealDB and SurrealKV form one canonical local store. SurrealDB is not a secondary projection,
-and SurrealKV is not exposed as a second production persistence format. Filesystem state, KV state,
-execution records, graph edges, and branch heads are committed through the same semantic kernel.
+Within the preferred adapter, SurrealDB and SurrealKV form one canonical local store. SurrealDB is
+not a secondary projection, and SurrealKV is not exposed as a second persistence format. Filesystem
+state, KV state, execution records, graph edges, and branch heads are committed through the same
+semantic kernel. Phase 0 exercises the same thin causal-commit protocol against SQLite/AgentFS so
+this choice is evidence-driven rather than assumed.
 
 ## What is and is not the moat
 
-SurrealDB and SurrealKV are enabling infrastructure, not the moat. The moat is the compound system:
+SurrealFS has no moat today. SurrealDB and SurrealKV are enabling infrastructure, not a future moat.
+Defensibility can form only from the compound system:
 
 1. Complete causal attribution from agent actions to state changes.
 2. Instant, storage-efficient snapshots and forks of agent environments.
 3. Filesystem-aware diffs and controlled merges.
 4. Artifact provenance and dependency tracking.
 5. Evaluation, recovery, and policy workflows that operate on the execution graph.
-6. A growing, permissioned corpus of real agent execution patterns and outcomes.
-7. A consistent semantic kernel across filesystems, sandboxes, SDKs, and agent frameworks.
+6. A consistent semantic kernel across filesystems, sandboxes, SDKs, and agent frameworks.
+7. Portable evidence aligned with OpenTelemetry and open provenance standards.
 
 See [The moat](docs/01-moat.md) for the full defensibility thesis and its falsification criteria.
 
@@ -61,8 +65,7 @@ flowchart LR
     I["Integration coverage"] --> C["Complete causal capture"]
     C --> T["Trusted explain and recovery"]
     T --> W["Fork, compare, evaluate, govern"]
-    W --> O["Permissioned outcome signals"]
-    O --> R["Better recovery and policy intelligence"]
+    W --> R["Better recovery workflows + conformance cases"]
     R --> I
 ```
 
@@ -76,7 +79,8 @@ ordinary sandbox snapshots used together.
 
 The implementation is deliberately gated:
 
-1. Prove atomic state + provenance, crash recovery, export/restore, engine fitness, and license fit.
+1. Prove immutable roots, transactional workspaces, enforced attribution, atomic state + provenance,
+   crash recovery, export/restore, engine fitness, and license fit.
 2. Prove that real users repeatedly rely on a causal recovery or fork/evaluation workflow.
 3. Expand filesystem compatibility and graph depth only after those two proofs.
 
@@ -89,7 +93,8 @@ in the [executive decision](docs/00-executive-decision.md), [roadmap](docs/13-ro
 SurrealKV alone is a plausible future storage adapter, but exposing it now would make this project
 own schema validation, secondary indexes, graph adjacency/traversal, query behavior, migrations,
 and a second conformance matrix. Those costs do not improve the moat. SurrealFS therefore keeps a
-domain storage interface for replaceability while shipping only SurrealDB + SurrealKV initially.
+domain storage interface for replaceability while proving SurrealDB + SurrealKV first. It ships that
+adapter only if the engine and product gates pass.
 
 ## Where the implementation design lives
 
@@ -112,6 +117,11 @@ or jump to the [canonical source table](docs/README.md#canonical-source-for-each
 ## Core design rules
 
 - There is exactly one semantic writer: `surrealfsd`.
+- A commit references an immutable filesystem/KV state root; materialized heads are disposable.
+- A tool writes through a private transactional workspace and publishes only through an explicit
+  expected-head commit.
+- `CAPTURED` attribution requires a daemon-issued workspace capability and verified process scope;
+  trace/span IDs alone are correlation metadata.
 - A successful commit advances state and provenance atomically.
 - Named snapshots point to application commits; they are not copied database directories.
 - SurrealDB temporal versioning is optional operational support, not the source of branch truth.
@@ -132,9 +142,10 @@ This is dependency evidence, not SurrealFS production evidence.
 
 The draft core schema was previously parsed and applied successfully to an in-memory instance; the
 product query file parses, but no production implementation or semantic query fixture exists yet.
-The next executable milestone is the vertical slice described in
-[Phase 1 of the roadmap](docs/13-roadmap.md): one repository, one branch, one tool span, filesystem
-and KV mutations, one atomic commit, reopen recovery, and a provenance query.
+The next executable milestones are the dual-store conformance spike in Phase 0 and the Linux causal
+workspace vertical slice in [Phase 1 of the roadmap](docs/13-roadmap.md): one private tool workspace,
+filesystem and KV mutations, one immutable-root commit, enforced attribution, reopen recovery, fork,
+and causal explanation.
 
 ## Licensing status
 

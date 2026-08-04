@@ -42,6 +42,10 @@ The design explicitly addresses:
 - injection through paths, record IDs, SurrealQL variables, import data, or metadata;
 - one tenant inferring another through IDs, errors, timing, counts, subscriptions, or caches;
 - bypassing provenance through direct database writes;
+- forging span/trace context to claim another tool's writes;
+- losing context across subprocesses or attributing a detached descendant to a completed tool;
+- nested or concurrent tools reusing the wrong writable workspace;
+- bypassing the workspace through a host path, writable lower mount, or database socket/directory;
 - request replay, duplicate side effects, and confused-deputy calls;
 - secret leakage in prompts, tool arguments, logs, diffs, exports, and graph previews;
 - graph traversal amplification and unbounded file/chunk allocation;
@@ -73,6 +77,37 @@ are historical attributes, not authenticated principals.
 Credentials are short-lived where possible. Tokens include issuer, audience, expiry, nonce/key ID,
 tenant, allowed repositories, and coarse capabilities. The daemon validates time with a documented
 clock-skew budget and supports key rotation.
+
+## Workspace capability and process attribution
+
+Trace context is untrusted correlation input. A `traceparent`, span ID, environment variable, or
+caller-provided process ID never grants write authority. `surrealfsd` mints a random opaque workspace
+capability after authenticating the launcher and binds its hash to repository, branch/base commit,
+principal, author span, process scope, permissions, expiry, and nonce.
+
+For the Linux proof:
+
+1. the daemon/launcher creates a private mount namespace and OverlayFS upper/work directory;
+2. the writable tool starts in a dedicated cgroup subtree and inherits the workspace endpoint and
+   capability through the controlled launch path;
+3. committed lower state and the database directory/socket are not writable or directly reachable;
+4. descendants inherit the namespace/cgroup; the daemon uses recursive cgroup state to determine
+   whether the process tree is quiescent;
+5. publish requires the same live capability and process scope and refuses while forbidden
+   descendants remain;
+6. on timeout, the daemon terminates the workspace process tree and aborts staged state;
+7. Landlock or an equivalent sandbox layer restricts ambient host filesystem access where available,
+   as defense in depth rather than the sole boundary.
+
+Initial policy is intentionally strict: missing context rejects writes; nested writable tools are
+rejected or serialized; concurrent tools receive distinct workspaces; detached background processes
+are unsupported. Observational child spans can share the parent's workspace but cannot independently
+publish it. Platform adapters that cannot prove equivalent scoping are read-only or labeled with
+reduced attribution guarantees.
+
+Capability material is redacted from logs, traces, exports, and persistent records. Rotation,
+revocation, expiry, replay, confused-deputy, descendant, and cross-workspace negative tests are
+mandatory. `CAPTURED` is a security claim and cannot be assigned after a missing-context fallback.
 
 ## Authorization model
 
@@ -129,6 +164,9 @@ upgrade, cache, backup, and fleet complexity; the deployment manifest records wh
   walker without escaping the repository root.
 - Symlink traversal has an explicit maximum and loop detection.
 - Host filesystem adapters use safe descriptor-relative operations where host paths are involved.
+- Workspace lower/committed state is read-only; only the private overlay is writable by the tool.
+- The database directory and daemon administrative endpoint are outside the tool's mount namespace
+  and sandbox allowlist.
 - Case sensitivity and Unicode normalization are repository properties; no implicit normalization
   changes identity.
 - Hard links cannot cross repository boundaries.
@@ -221,6 +259,10 @@ protected operations.
 
 ## External tool side effects
 
+See [External effects and recovery](16-external-effects-and-recovery.md) for the canonical ledger,
+dispatch, reconciliation, compensation, and recovery design. This section defines its security
+boundary.
+
 SurrealFS can atomically record a tool call and local state, but it cannot atomically transact with
 email, cloud APIs, payment systems, or arbitrary shell effects. Tools must report an external
 effect descriptor with provider, operation, target digest, provider idempotency key, and resulting
@@ -307,6 +349,9 @@ for writes.
 - Cross-tenant negative tests cover every API and subscription.
 - Fuzzers cover path parsing, protocol decoding, imports, query parameters, and mutation decoding.
 - No client-accessible route can open raw write mode.
+- Forged trace/span IDs, missing/expired capabilities, cross-workspace handles, direct lower/database
+  access, and detached descendants all fail closed in black-box tests.
+- Process-tree propagation and quiescence tests cover exec, fork, crash, timeout, and cancellation.
 - Secret scanning verifies logs, traces, error messages, previews, and test fixtures.
 - Restore, key rotation, credential revocation, and quarantine drills succeed.
 - Graph queries are bounded under adversarial high fan-out.

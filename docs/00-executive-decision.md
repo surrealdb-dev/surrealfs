@@ -1,15 +1,24 @@
-# Executive decision
+# Executive decision: fund the proof, not the full rewrite
 
 ## Decision
 
-SurrealFS will use embedded SurrealDB backed by SurrealKV as its one canonical persistence layer.
-The first production version will not offer raw SurrealKV as a separate storage mode.
+Fund a tightly bounded proof of the SurrealFS causal-workspace contract. Use embedded SurrealDB
+backed by SurrealKV as the **preferred proof implementation**, not as a production conclusion.
+The same minimal `CausalCommitStore` protocol must also be exercised against a SQLite/AgentFS
+baseline during Phase 0. Production selection follows correctness, lifecycle, complexity, workload,
+and product evidence.
 
-The decision is driven by product fit rather than an assertion that this combination is universally
-the fastest embedded datastore. Agent execution naturally produces a graph of runs, actions, state
-transitions, artifacts, branches, policies, and evaluations. SurrealDB makes that graph queryable
-without building a second index or a custom graph engine. SurrealKV supplies local embedded storage,
-transactions, snapshot isolation, range access, versioning support, and a value log.
+If SurrealDB + SurrealKV passes those gates, it becomes the one canonical persistence layer for the
+first production architecture. The first production version will not offer raw SurrealKV as a
+separate storage mode. If it fails while the product semantics validate, replace the adapter rather
+than weakening the product contract.
+
+The preference is driven by product fit rather than an assertion that this combination is
+universally the fastest or safest embedded datastore. Agent execution naturally produces a graph of
+runs, actions, state transitions, artifacts, branches, policies, and evaluations. SurrealDB may make
+that graph queryable without building a second index or a custom graph engine. SurrealKV supplies the
+candidate local embedded storage layer. Phase 0 must prove that this convenience survives the
+required durability and hot-path workload.
 
 ## Why the earlier two-store design is no longer preferred
 
@@ -71,25 +80,39 @@ It is not a moat by itself. The durable advantage must come from:
 - a domain-specific causal model;
 - fork/diff/recovery ergonomics;
 - integrations at the actual agent execution boundary;
-- accumulated execution and outcome data;
+- optional, permissioned outcome signals where customers explicitly choose to share them;
 - derived recovery, evaluation, and governance capabilities.
+
+There is no moat today. The storage engine, graph schema, snapshots, and ontology are not moats by
+themselves. Defensibility can form only through enforced mutation-boundary integrations, trustworthy
+capture under crashes and subprocesses, repeated recovery workflows, and interoperable evidence.
+Permissioned aggregate data is optional upside, not the initial investment thesis.
 
 ## Conditions for proceeding
 
-Proceed with the full reconstruction only after a vertical slice proves all of the following:
+Proceed beyond the proof only after it establishes all of the following:
 
-1. One SurrealDB transaction can atomically apply current state, immutable history, graph edges, and
-   branch-head advancement.
-2. The durable mode survives fault injection without losing acknowledged commits.
-3. Filesystem metadata operations stay inside an agreed latency envelope.
-4. Content-addressed chunks can be streamed without oversized transactions or pathological growth.
-5. At least three graph-powered product workflows deliver clear user value.
-6. Logical export/import allows recovery from physical-format or dependency changes.
-7. SurrealDB licensing and the private-source dependency are acceptable for the intended product.
+1. The same bounded causal-commit protocol is implemented and tested on the SurrealDB/SurrealKV
+   candidate and the SQLite/AgentFS baseline with normalized durability.
+2. A commit references an immutable filesystem/KV state root; branch creation from a retained commit
+   does not copy the complete state; any materialized head is disposable and rebuildable.
+3. One transaction atomically creates immutable state, commit evidence, graph edges, retry receipt,
+   and the expected-head branch movement.
+4. A private transactional workspace hides staged file/KV changes until explicit publish and
+   discards them on abort.
+5. Attribution is enforced by a daemon-issued workspace capability and process-tree boundary rather
+   than trusted from a caller-supplied span ID.
+6. Durable mode survives fault injection without losing or partially exposing acknowledged commits.
+7. Logical export/import reconstructs every retained state root independently of physical storage.
+8. A real failed-run recovery/fork/compare trial shows repeated user value before broad POSIX work.
+9. SurrealDB licensing and the private-source dependency are acceptable for the intended product.
 
 ## Conditions for revisiting the engine choice
 
-Revisit SurrealDB-over-SurrealKV if query execution dominates filesystem cost after schema and access
-path optimization, if database upgrades are operationally unsafe, if SurrealKV durability fails the
-fault model, or if the graph is not central to product usage. Preserve the domain protocol and
-application-level history so an engine change does not require redefining the product.
+Choose or revisit SurrealDB-over-SurrealKV from the Phase 0 comparison. Prefer the SQLite/AgentFS
+path if it provides equivalent semantics with lower lifecycle, durability, or implementation risk.
+Prefer SurrealDB/SurrealKV only if it passes every correctness gate and materially reduces domain
+indexing/query complexity or enables the target workflows. Re-open the choice if query execution
+dominates filesystem cost, upgrades are operationally unsafe, SurrealKV durability fails the fault
+model, or graph-powered workflows are not central to usage. Preserve the domain protocol and
+application-level history so an engine change never requires redefining the product.

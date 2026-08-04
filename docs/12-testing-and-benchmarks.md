@@ -98,6 +98,9 @@ branch-head compare-and-swap, idempotency receipts, and file/KV atomic commits.
 Each adapter must pass a shared contract:
 
 - atomic commit and rollback;
+- immutable state-node/root creation, historical read, structural sharing, and root verification;
+- workspace isolation, explicit publish/abort, and no visibility on `close`/`fsync`;
+- capability/process-scope enforcement and missing-context rejection;
 - conditional head movement;
 - deterministic receipt replay;
 - snapshot-consistent reads;
@@ -109,6 +112,7 @@ Each adapter must pass a shared contract:
 - logical export/import boundary behavior;
 - public SDK drop/shutdown, store-lock release, and reopen behavior;
 - stopped-store physical recovery-copy verification.
+- first-parent pagination that excludes unrelated same-generation branch commits.
 
 Evidence revalidated against local SurrealDB `v3.3.0-nightly` source commit `e68539867` with
 SurrealKV `0.21.3`:
@@ -137,7 +141,11 @@ after_request_receipt_lookup
 after_chunk_stage
 after_begin_transaction
 after_head_read
+after_workspace_capability_validation
+after_process_quiescence_check
 after_each_mutation
+after_each_state_node
+after_state_root
 after_commit_record
 after_graph_edges
 after_branch_update
@@ -167,6 +175,8 @@ Process kills are necessary but not sufficient. The matrix includes:
 | Failure | Method | Required result |
 |---|---|---|
 | Client disappears | kill SDK process mid-stream/mid-response | workspace expires; committed receipt remains discoverable |
+| Tool descendant outlives parent | keep cgroup child alive past tool exit/deadline | publish waits, then policy kills/aborts; no staged state visible |
+| Forged/missing capability | alter trace/span/capability/process scope | fail closed; no downgrade to captured/unknown |
 | Daemon abort/SIGKILL | randomized kill loop | last acknowledged durable commits survive; no partial commit |
 | Host restart | VM/container/host test where feasible | identical durability contract after restart |
 | Disk full | quota/loopback fault environment | clear failure, no false success, recovery after space restored |
@@ -271,6 +281,10 @@ Checkout base, read 200 files, write range/replace 5-30 files, create/delete pat
 keys, commit from one tool span, diff, then fork. Measures commit latency, chunk reuse, diff latency,
 and bytes written.
 
+The Phase 0 parity form is fixed and smaller: five file mutations including rename/delete, 20 KV
+updates, one artifact/span, publish, reopen, historical read, first-parent pagination, fork, diff, and
+explain. Both store candidates execute the identical canonical fixture and durability contract.
+
 ### Artifact-heavy run
 
 Stream 1-10 GiB artifacts with a mix of 4 KiB to 256 MiB objects while metadata commits continue.
@@ -293,17 +307,26 @@ Measures history growth, write/read amplification, maintenance interference, and
 
 ## Comparative baselines
 
-Benchmarks compare:
+Phase 0 must compare:
 
-1. current AgentFS/SQLite path where equivalent semantics exist;
-2. SurrealFS domain reference/in-memory overhead floor;
-3. embedded SurrealDB + SurrealKV candidate;
-4. raw SurrealDB queries used by the storage adapter to isolate semantic-layer overhead;
-5. alternative adapter proof-of-concept only if a decision trigger fires.
+1. SQLite/AgentFS implementation of the exact small `CausalCommitStore` protocol;
+2. embedded SurrealDB + SurrealKV implementation of that exact protocol;
+3. SurrealFS domain reference/in-memory overhead floor;
+4. raw SurrealDB queries used by the candidate adapter to isolate semantic-layer overhead.
+
+The SQLite/AgentFS implementation is mandatory before the engine decision, not a fallback built only
+after a trigger. It remains a bounded evaluation spike unless selected; the project does not promise
+two production adapters. The report separately evaluates whether extending AgentFS's existing SDK/
+mount distribution is preferable to a new SurrealFS stack.
 
 The comparison must normalize durability. An asynchronous/non-fsync baseline cannot be presented
 as faster than a durable commit without labeling the mismatch. Feature differences such as graph
 capture and immutable history are reported separately from throughput.
+
+Correctness is pass/fail before performance ranking. A candidate that loses acknowledged state,
+partially publishes, misattributes a write, reconstructs a different root, or returns sibling-branch
+commits cannot win on latency. After correctness, compare owned code/complexity, migration/query
+surface, lifecycle, and operator burden alongside performance.
 
 ## Metrics
 
@@ -330,6 +353,10 @@ Concrete thresholds are set in Phase 0 using observed product workloads. Until t
 relative gates prevent vague success:
 
 - zero invariant or acknowledged-durability failures in the full deterministic crash matrix;
+- zero staged-state visibility before publish and zero captured writes accepted with invalid/missing
+  workspace authority;
+- zero ancestry-membership errors in branched first-parent fixtures;
+- retained roots reconstruct exact file/KV state and fork without full-state copy;
 - zero unexplained differences in migration and export/import verification;
 - p99 metadata read and normal commit latency fit the user-interaction SLO on supported hardware;
 - enabling provenance adds no more than the explicitly approved latency and storage budget;
@@ -339,6 +366,9 @@ relative gates prevent vague success:
 - compaction/GC cannot stall commits beyond the approved p99.9 budget;
 - SurrealDB upgrade passes old/new logical equality and a production-sized canary soak;
 - no critical/high unresolved security finding for the deployment model.
+- Phase 0 engine report contains parity evidence rather than architecture preference.
+- Phase 2 design-partner trial demonstrates repeated recovery use and a material outcome improvement
+  before broad filesystem compatibility work begins.
 
 ## Continuous validation
 

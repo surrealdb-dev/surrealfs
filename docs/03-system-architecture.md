@@ -2,10 +2,11 @@
 
 ## Architectural objective
 
-SurrealFS must make one Rust implementation authoritative for filesystem semantics, KV semantics,
-history, causality, and storage transitions. SurrealDB provides the record, graph, query, index, and
-transaction layer. SurrealKV provides embedded durable storage. Other languages and mount protocols
-are clients or adapters; they are not alternate implementations of the state machine.
+SurrealFS must make one Rust implementation authoritative for transactional-workspace, filesystem,
+KV, immutable-root, history, causality, and publication semantics. The preferred proof adapter uses
+SurrealDB for records, graph queries, indexes, and transactions over SurrealKV. Other languages and
+mount protocols are clients or adapters; they are not alternate implementations of the state
+machine. The domain contract remains testable against the Phase 0 SQLite/AgentFS baseline.
 
 ## Context
 
@@ -44,6 +45,8 @@ The daemon owns the database directory and process-scoped state:
 - enforces one-writer ownership;
 - accepts authenticated local connections;
 - manages repository, branch, and session handles;
+- mints and validates scoped workspace capabilities;
+- launches or binds controlled process trees to private workspace overlays;
 - maintains open file handles and advisory locks;
 - applies quotas, rate limits, cancellation, and backpressure;
 - exposes health, metrics, backup, export, and administrative operations;
@@ -75,7 +78,7 @@ It owns:
 - transaction construction;
 - expected-head conflict checks;
 - idempotency checks;
-- current-state and history writes;
+- immutable state-node/root writes and optional head-projection writes;
 - relation creation;
 - query plans and index expectations;
 - conversion from database errors to domain errors.
@@ -109,6 +112,10 @@ Protocol messages use domain values. They do not expose SurrealDB values or phys
 FUSE and NFS translate protocol-specific requests into kernel commands. They own request/reply
 translation and cache invalidation behavior, not storage or filesystem truth.
 
+The direct SDK/sandbox workspace is the reference write path. General shared mounts are later
+adapters and cannot redefine publication on syscall, `close`, or `fsync`. A platform that cannot
+enforce the workspace/process boundary ships with reduced, explicit guarantees or read-only support.
+
 ### SDKs
 
 SDKs provide ergonomic async and sync APIs, type conversion, local daemon discovery, reconnect, and
@@ -116,18 +123,20 @@ streaming. All SDKs run the same protocol conformance fixtures.
 
 ## Write path
 
-### Small semantic mutation
+### Transactional workspace publication
 
 ```text
-client request
-  -> authenticate and resolve session/repository/branch
-  -> kernel reads required current records
-  -> kernel validates filesystem/KV/span invariants
-  -> kernel builds CommitPlan
+daemon opens workspace at expected branch head
+  -> mint scoped capability and process boundary
+  -> tool/descendants stage file + KV + artifact changes privately
+  -> wait for the configured process tree to become quiescent
+  -> authenticate publish and revalidate capability/span/base head
+  -> kernel applies workspace delta to immutable base root
+  -> kernel builds CommitPlan with new state root
   -> store begins SurrealDB transaction
   -> check request id and expected branch head
-  -> write immutable history and commit records
-  -> update materialized current records
+  -> write immutable state nodes, root, history, and commit records
+  -> optionally update disposable materialized-head projections
   -> create causal relations
   -> advance branch head and store request receipt
   -> commit at configured durability boundary
@@ -137,11 +146,12 @@ client request
 ### Streaming file write
 
 ```text
-open write session
+open private workspace write stream
   -> stream bytes through chunker
   -> hash and stage missing chunks idempotently
-  -> build extent replacement mutation
-  -> commit extent, inode, artifact, causality, and branch head
+  -> update workspace-local extent delta
+  -> on explicit publish, path-copy extent/inode/namespace roots
+  -> commit root, artifact, causality, branch head, and receipt
   -> mark chunks reachable through committed records
 ```
 
@@ -150,20 +160,20 @@ garbage collection removes them after the retry and recovery window.
 
 ## Read path
 
-Current reads use materialized branch-head records. A filesystem lookup should not reconstruct the
-entire branch history.
-
-Historical reads resolve a `CommitRef` to branch and sequence, then select the latest applicable
-immutable state version. The first implementation may materialize a read view for repeated historical
-access. Named snapshots and branch bases provide stable anchors for caching.
+Current and historical reads resolve a branch or `CommitRef` to that commit's immutable state root.
+Lookup walks the versioned persistent tree; it never scans ancestry to find the latest applicable
+version. Optional materialized-head projections may accelerate current reads after measurement, but
+each projection identifies its source root and can be deleted/rebuilt without losing truth. Named
+snapshots and commits provide stable anchors for caching.
 
 Content reads fetch extents in file-offset order, load chunks, verify content hashes according to the
 configured verification policy, and stream requested ranges to the client.
 
 ## Concurrency model
 
-The daemon may process reads concurrently. Writes to one branch use optimistic concurrency against
-the branch head:
+The daemon may process reads concurrently. Each writable tool gets a separate workspace based on one
+commit. Workspace changes are isolated until publication. Publishes to one branch use optimistic
+concurrency against the branch head:
 
 - every commit request includes `expected_head`;
 - the transaction verifies the current head;
@@ -173,6 +183,10 @@ the branch head:
 Different branches can commit concurrently when their records and shared uniqueness constraints do
 not conflict. The kernel must never resolve a conflict by silently applying a stale plan.
 
+The Linux proof forbids detached descendants and rejects or serializes nested writable workspaces.
+Observational child spans may share their parent's workspace. General nested/concurrent write
+semantics require a later explicit ADR and cannot emerge accidentally from mount behavior.
+
 The initial implementation should limit transaction concurrency until measurements justify broader
 parallelism. Predictable correctness is more valuable than speculative concurrency in the first
 vertical slice.
@@ -181,12 +195,14 @@ vertical slice.
 
 | Data | Placement | Reason |
 |---|---|---|
-| Current filesystem and KV state | SurrealDB normal tables | Fast record/range reads and indexes |
-| Immutable state history | SurrealDB history tables | Explicit branch/commit semantics |
+| Immutable filesystem/KV state roots and nodes | SurrealDB normal tables | Canonical current and historical lookup |
+| Optional branch-head projections | SurrealDB projection tables | Disposable measured read acceleration |
+| Mutation/history evidence | SurrealDB history tables | Explicit branch/commit semantics and explanation |
 | Commits and mutations | SurrealDB normal tables | Canonical audit and reconstruction |
 | Causal relations | SurrealDB relation tables | Native graph traversal |
 | File and artifact chunks | SurrealDB chunk records / SurrealKV VLog | One local store and content deduplication |
-| Open handles and transient locks | Daemon memory | Process-scoped semantics; reconstructed safely |
+| Workspace capabilities, open handles, transient locks | Daemon memory plus hashed workspace metadata | Process-scoped authority; no bearer secret at rest |
+| Workspace file/KV deltas | Private overlay/staging area | Hidden until explicit publish; discardable on abort |
 | Logical exports | Portable archive outside database | Engine-independent recovery and interchange |
 | Metrics | Telemetry pipeline, optionally summarized in DB | Avoid hot metrics writes contaminating commit path |
 
@@ -194,8 +210,9 @@ vertical slice.
 
 ### Local embedded mode — required
 
-One daemon embeds SurrealDB and opens one SurrealKV directory. SDKs and mounts connect locally. This
-is the correctness reference and the first production target.
+One daemon embeds the selected store and owns its directory. A controlled Linux SDK/sandbox workspace
+is the correctness reference and first proof target. Mounts connect later through the same domain
+protocol after their visibility and attribution guarantees are demonstrated.
 
 ### Container/CI mode — required
 
@@ -237,10 +254,11 @@ but it must declare reduced guarantees and cannot define canonical semantics.
 
 1. Stop accepting new mutating sessions.
 2. Let active requests finish or cancel by deadline.
-3. Stop GC and background migration work.
-4. flush/sync according to durability policy;
-5. close the embedded database;
-6. release store ownership.
+3. Abort or explicitly reconcile unpublished workspaces; never auto-publish them.
+4. Stop GC and background migration work.
+5. flush/sync according to durability policy;
+6. close the embedded database;
+7. release store ownership.
 
 This is the required product lifecycle, not a claim that the current public SDK already exposes
 each step as an awaited call. The current SDK initiates internal shutdown when all route senders are
@@ -251,6 +269,9 @@ under process death without it.
 ## Failure boundaries
 
 - **Client failure:** idempotency key permits safe retry.
+- **Workspace/tool failure:** unpublished file/KV state remains private and is discarded after the
+  recovery window; no branch moves.
+- **Background descendant:** publish waits for quiescence; policy timeout kills/aborts the workspace.
 - **Daemon failure:** recovered database contains complete committed transactions only; open handles
   disappear and are reconciled.
 - **Chunk-stage failure:** no branch state references incomplete bytes.
@@ -268,9 +289,11 @@ At minimum expose:
 - commit conflicts and idempotent retry counts;
 - chunk staging, deduplication, and verification rates;
 - transaction size and mutation count;
+- workspace open/publish/abort latency, conflicts, expired workspaces, and rejected attribution;
+- process-tree quiescence time and detected bypass attempts;
 - SurrealKV sync latency, cache use, memtable/VLog growth, and reopen time;
-- current/history/chunk byte estimates;
-- branch depth and historical-read cost;
+- root-node/projection/history/chunk byte estimates;
+- tree depth, node fanout, subtree sharing, and historical-read cost;
 - graph-query latency and scanned record counts;
 - background GC, migration, backup, and export progress;
 - invariant and integrity-check failures.

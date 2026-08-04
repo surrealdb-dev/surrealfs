@@ -15,7 +15,8 @@ responsibility for a commit.
 **Commit** — An immutable atomic logical state transition with parent references, mutations, hashes,
 and causal metadata.
 
-**Current state** — Materialized records used for fast reads at a branch head.
+**Current state** — The logical state identified by the current branch-head commit and its immutable
+state root. A materialized projection may accelerate reads but does not define current state.
 
 **Dentry** — A directory entry mapping `(branch, parent inode, name)` to an inode.
 
@@ -36,7 +37,8 @@ artifacts, policies, evaluations, and forks.
 **Logical export** — A backend-independent representation of SurrealFS records, relations, and
 content, suitable for verification and import.
 
-**Materialized head** — Current-state records maintained transactionally for efficient branch reads.
+**Materialized head** — An optional, disposable projection of a branch-head root used for efficient
+reads. It is never canonical and must be rebuildable and verifiable.
 
 **Mutation** — One ordered logical change within a commit, such as create dentry, replace extents, or
 set a KV value.
@@ -54,8 +56,17 @@ universe.
 **Span** — A nested interval of causal work within a run. Tool calls and process executions are span
 types.
 
-**State root** — A deterministic digest representing the logical filesystem and KV state at a
-commit. Its implementation may evolve by version, but verification rules are fixed per version.
+**State root** — An immutable content-addressed root referenced by a commit. It identifies the
+namespace, inode/metadata, extent/content, and KV roots for the complete logical state. Encoding and
+verification rules are fixed per root-format version.
+
+**Transactional workspace** — A private file-overlay and KV/artifact delta based on one commit. Its
+changes are visible to the owning tool/process tree but not to committed readers until explicit
+publish.
+
+**Workspace capability** — A daemon-issued opaque authority binding a workspace to its repository,
+base commit, principal, author span, process scope, permissions, and expiry. Trace IDs are not
+workspace capabilities.
 
 **SurrealFS-owned record** — A table or relation whose invariants may be changed only through the
 SurrealFS domain API and schema migrations.
@@ -64,4 +75,3 @@ SurrealFS domain API and schema migrations.
 
 **Versioned storage** — SurrealDB/SurrealKV engine-level historical read support. It is useful but is
 not identical to SurrealFS commits, branches, or retention.
-

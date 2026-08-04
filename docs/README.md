@@ -10,7 +10,7 @@ For product, engineering, and leadership discussion:
 
 1. [Team pitch](../PITCH.md) — problem, product, moat, design, evidence, and the investment ask.
 2. [Executive decision](00-executive-decision.md) — the exact recommendation and go/no-go gates.
-3. [Roadmap: Phase 0](13-roadmap.md#phase-0--proof-package) — what the first funded proof delivers.
+3. [Roadmap: Phase 0](13-roadmap.md#phase-0--decision-closure-and-dual-store-spike) — what the first funded proof delivers.
 4. [Highest-priority risks](14-risk-register.md#highest-priority-risks-before-writing-production-code)
    — what can invalidate the proposal.
 
@@ -21,17 +21,21 @@ Stop there unless you are reviewing implementation details.
 For the engineers building the vertical slice, read in this order:
 
 1. [Product contract](02-product-contract.md) — what the system promises and explicitly does not.
-2. [System architecture](03-system-architecture.md) — processes, boundaries, write/read paths, and
+2. [ADR 0004](adr/0004-immutable-state-roots.md) and [ADR 0005](adr/0005-transactional-workspaces-and-attribution.md)
+   — the two foundational implementation decisions.
+3. [System architecture](03-system-architecture.md) — processes, boundaries, write/read paths, and
    deployment.
-3. [Canonical data model](04-data-model.md) — IDs, records, relations, history, roots, and indexes.
-4. [Commit protocol](05-commit-protocol.md) — atomicity, retries, conflicts, durability, and recovery.
-5. [Execution graph](07-execution-graph.md) — how actions, commits, artifacts, policies, and
+4. [Canonical data model](04-data-model.md) — IDs, records, relations, history, roots, and indexes.
+5. [Commit protocol](05-commit-protocol.md) — atomicity, retries, conflicts, durability, and recovery.
+6. [External effects and recovery](16-external-effects-and-recovery.md) — exact local restoration,
+   action attribution, reconciliation, compensation, and explicit recovery boundaries.
+7. [Execution graph](07-execution-graph.md) — how actions, commits, artifacts, policies, and
    evaluations connect.
-6. [SurrealDB + SurrealKV contract](08-surrealdb-surrealkv.md) — adapter boundary and engine rules.
-7. [API and SDK design](09-api-and-sdk.md) — commands, queries, transactions, subscriptions, and
+8. [SurrealDB + SurrealKV contract](08-surrealdb-surrealkv.md) — candidate adapter boundary and engine gates.
+9. [API and SDK design](09-api-and-sdk.md) — commands, queries, transactions, subscriptions, and
    errors.
-8. [Testing and benchmarks](12-testing-and-benchmarks.md) — executable proof of the above.
-9. [Detailed roadmap](13-roadmap.md) — implementation order and exit criteria.
+10. [Testing and benchmarks](12-testing-and-benchmarks.md) — executable proof of the above.
+11. [Detailed roadmap](13-roadmap.md) — implementation order and exit criteria.
 
 Read [filesystem semantics](06-filesystem-semantics.md) before implementing filesystem operations,
 and [security and tenancy](10-security-and-tenancy.md) before accepting real customer data.
@@ -58,8 +62,9 @@ flowchart TB
     P["Pitch and executive decision\nWhy build it?"] --> C["Product contract\nWhat must be true?"]
     C --> A["System architecture\nWhere does it run?"]
     A --> D["Data model + schema\nWhat is stored?"]
-    D --> M["Commit protocol + filesystem semantics\nHow does state change?"]
-    M --> G["Execution graph\nHow is causality represented?"]
+    D --> M["Commit protocol + filesystem semantics\nHow does controlled state change?"]
+    M --> E["External effects + recovery\nHow are cross-boundary failures handled?"]
+    E --> G["Execution graph\nHow is causality represented?"]
     G --> I["API and SDK\nHow do clients use it?"]
     I --> T["Tests + benchmarks\nHow is it proven?"]
     T --> R["Roadmap + gates\nIn what order is it built?"]
@@ -93,6 +98,7 @@ store or mutate SurrealFS tables directly.
 | Which components own which behavior? | [System architecture](03-system-architecture.md) | Initial crate layout in [PLAN.md](../PLAN.md#initial-repository-layout-for-implementation) |
 | Which records and relations exist? | [Data model](04-data-model.md) | [Draft SurrealQL schema](../schema/001-core.surql) |
 | How is one atomic change committed? | [Commit protocol](05-commit-protocol.md) | Transaction tests in [testing](12-testing-and-benchmarks.md) |
+| How are external effects recovered? | [External effects and recovery](16-external-effects-and-recovery.md) | Failure-window and adapter proof plan in the same document |
 | What are file/KV semantics? | [Filesystem semantics](06-filesystem-semantics.md) | Model/property tests in [testing](12-testing-and-benchmarks.md) |
 | How is causality queried? | [Execution graph](07-execution-graph.md) | [Product queries](../schema/product-queries.surql) |
 | Why and how is the database used? | [Engine contract](08-surrealdb-surrealkv.md) | [Current code audit](15-current-surrealdb-audit.md) |
@@ -117,6 +123,7 @@ store or mutate SurrealFS tables directly.
 - [System architecture](03-system-architecture.md)
 - [Canonical data model](04-data-model.md)
 - [Commit protocol](05-commit-protocol.md)
+- [External effects and recovery](16-external-effects-and-recovery.md)
 - [Filesystem semantics](06-filesystem-semantics.md)
 - [Execution graph](07-execution-graph.md)
 - [SurrealDB + SurrealKV operating contract](08-surrealdb-surrealkv.md)
@@ -139,6 +146,8 @@ store or mutate SurrealFS tables directly.
 - [ADR 0001: canonical store](adr/0001-surrealdb-surrealkv-canonical.md)
 - [ADR 0002: application commits](adr/0002-application-commits.md)
 - [ADR 0003: single semantic writer](adr/0003-single-semantic-writer.md)
+- [ADR 0004: immutable state roots](adr/0004-immutable-state-roots.md)
+- [ADR 0005: transactional workspaces and attribution](adr/0005-transactional-workspaces-and-attribution.md)
 - [Glossary](glossary.md)
 - [Contributing](../CONTRIBUTING.md)
 

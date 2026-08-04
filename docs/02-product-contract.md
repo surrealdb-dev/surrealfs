@@ -8,6 +8,10 @@ and exposes a causal graph for explanation, recovery, comparison, evaluation, an
 
 ## Primary users
 
+The first validated user is a platform or developer-productivity team operating long-running,
+expensive coding-agent attempts in a controlled Linux sandbox. Other users below are expansion
+hypotheses until the recovery/fork workflow is repeatedly used:
+
 - agent framework authors who need durable, inspectable state;
 - developers debugging or comparing agent runs;
 - platform teams operating agents in CI, sandboxes, or production workflows;
@@ -23,6 +27,13 @@ When SurrealFS acknowledges a durable commit, its filesystem/KV mutations, immut
 causal attribution, relations, and branch-head update are visible together. The product never claims
 that a tool caused a state change that was not committed.
 
+### Isolated publication
+
+A writable tool and its approved descendants operate in a private transactional workspace based on
+one commit. Other sessions see the committed branch head until an explicit publish succeeds. `close`
+and `fsync` do not publish. Abort, timeout, expected-head conflict, or pre-commit crash exposes none of
+the workspace's staged logical state.
+
 ### Restore captured state
 
 A retained commit can be restored or mounted as the exact logical filesystem and KV state captured by
@@ -31,12 +42,13 @@ SurrealFS, subject to explicitly documented unsupported filesystem features.
 ### Trace provenance
 
 For captured operations, SurrealFS can identify which run, span, tool call, process, or administrative
-operation caused each committed mutation.
+operation caused each committed mutation. `CAPTURED` means the daemon verified a scoped workspace
+capability and process boundary; a caller-supplied trace/span identifier alone is insufficient.
 
 ### Fork without full copy
 
-A branch created from a retained commit initially shares immutable history and chunks. Creating the
-branch does not duplicate the entire logical filesystem.
+A branch created from a retained commit points to the commit's immutable state root and shares
+unchanged tree nodes and chunks. Creating the branch does not duplicate the logical filesystem.
 
 ### Portable evidence
 
@@ -65,7 +77,8 @@ The UI and API must distinguish `state_restored`, `inputs_replayed`, and `behavi
 
 SurrealFS aims for the subset required by supported agent workloads. Unsupported or approximated
 features are reported explicitly. Compatibility is measured through conformance tests, not assumed
-because a mount exists.
+because a mount exists. The first write contract is the direct SDK/sandbox transactional workspace;
+general shared FUSE/NFS semantics and macOS attribution parity are later, demand-gated work.
 
 ### Durability
 
@@ -83,6 +96,8 @@ commit. Faster modes must expose their potential loss window in configuration an
 - hiding all physical costs of unlimited history;
 - supporting multiple canonical database formats;
 - maintaining direct database semantics independently in every language SDK.
+- allowing detached background processes or nested concurrent writers to escape the owning
+  workspace in the initial release.
 
 ## Canonical operations
 
@@ -96,10 +111,11 @@ commit. Faster modes must expose their potential loss window in configuration an
 
 ### State
 
+- open a transactional workspace from a branch/commit;
 - filesystem lookup/read/write/mutate;
 - KV get/set/delete/scan;
 - begin and complete a causal span;
-- apply an atomic commit request;
+- publish or abort the workspace;
 - read current or historical state.
 
 ### Version control
@@ -124,6 +140,8 @@ commit. Faster modes must expose their potential loss window in configuration an
 The product uses precise terms:
 
 - **staged:** bytes or input have been uploaded but are not referenced by a commit;
+- **workspace-visible:** staged state visible only to the authorized workspace process tree;
+- **published:** a successful commit made workspace state visible at a branch head;
 - **committed:** a transaction made the record and its relations visible;
 - **acknowledged:** the caller received a successful response;
 - **durable:** the configured sync boundary completed before acknowledgement;
@@ -141,13 +159,16 @@ The product uses precise terms:
 4. Every non-genesis commit references valid parent commit(s).
 5. Commit sequence is monotonic within a branch; commit identity does not depend on wall-clock order.
 6. A snapshot references exactly one retained commit.
-7. Current state records identify the commit that last modified them.
-8. Historical state records are immutable.
-9. A relation created by the kernel has valid endpoints in the same repository.
-10. A referenced chunk's bytes hash to its content ID.
-11. A successful mutation has a non-null cause, including explicit `system`, `import`, or `unknown`
-    causes when finer attribution is unavailable.
-12. System schema changes are applied through ordered, idempotent migrations.
+7. Every commit references one immutable, verifiable state root covering filesystem and KV state.
+8. Materialized head records, if present, are disposable projections and identify the source root.
+9. Historical state records and persistent tree nodes are immutable.
+10. A relation created by the kernel has valid endpoints in the same repository.
+11. A referenced chunk's bytes hash to its content ID.
+12. Every captured tool mutation has a verified workspace capability, process scope, and direct cause.
+13. `unknown` attribution is restricted to explicit legacy imports; system and maintenance work use
+    typed causes and never masquerade as captured tool execution.
+14. Generation is never used as proof that a commit belongs to an ancestry path.
+15. System schema changes are applied through ordered, idempotent migrations.
 
 ## Service-level objectives to define before production
 
@@ -158,10 +179,12 @@ Numerical targets must be selected from measured workloads. At minimum define:
 - metadata-operation p95 and p99 budgets;
 - streaming read/write throughput budgets;
 - maximum reopen/recovery time at target repository size;
+- maximum workspace-open and publish overhead on representative agent runs;
 - fork and snapshot latency budgets;
 - graph-query latency at target relation cardinality;
 - backup, restore, and logical-export recovery objectives;
 - maximum accepted integrity-check error rate: zero for committed references.
+- recovery-time and rerun-cost improvement in the design-partner workflow.
 
 ## Versioning policy
 
@@ -176,4 +199,3 @@ SurrealFS versions independently:
 
 An engine upgrade is not allowed to silently change product semantics. Compatibility tests compare
 logical results before and after every supported upgrade path.
-

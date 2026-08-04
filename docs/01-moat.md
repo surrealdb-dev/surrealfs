@@ -11,8 +11,8 @@ The strongest positioning is:
 > exact state it observed, the state it produced, the artifacts it derived, the branch it changed,
 > the policy that governed it, and the evaluation that judged it.
 
-This creates a compounding advantage when capture, workflows, integrations, and outcome data reinforce
-one another.
+There is no moat today. This is a falsifiable defensibility hypothesis: capture, recovery workflows,
+integrations, and trusted evidence must reinforce one another in repeated customer use.
 
 ## The pitch in one diagram
 
@@ -40,7 +40,7 @@ The strategic sequence is:
 2. make causality complete enough to trust;
 3. turn trusted causality into repeated recovery, fork, evaluation, and policy workflows;
 4. distribute through framework-neutral integrations;
-5. use privacy-preserving outcome signals to make those workflows better.
+5. make the resulting evidence portable enough to become infrastructure rather than a closed silo.
 
 Skipping the first two steps produces observability, not a defensible execution substrate.
 
@@ -74,9 +74,21 @@ calls, streaming outputs, concurrent readers, and partial external failures. A h
 correct is not trustworthy enough for recovery or governance. Years of semantic edge cases and
 compatibility tests can become an engineering moat.
 
-### 2. The agent execution ontology
+### 2. Causal recovery intelligence
 
-The schema should encode durable concepts that remain meaningful across frameworks:
+The differentiated product behavior is not storing an execution ontology. It is using exact state
+and dependency evidence to:
+
+- identify the first harmful transition rather than the last visible error;
+- distinguish safe selective recovery from a required pre-action fork;
+- preserve independent later work when evidence supports it;
+- compare attempts from the same root and surface their first causal divergence;
+- reconcile external effects that cannot be rolled back with internal state.
+
+This behavior must be tested against real incidents and reference cases. A graph browser or generic
+history query does not satisfy this layer.
+
+The supporting schema should still encode durable concepts that remain meaningful across frameworks:
 
 - agent identity and configuration;
 - run and span hierarchy;
@@ -88,8 +100,8 @@ The schema should encode durable concepts that remain meaningful across framewor
 - evaluations, scores, failures, and baselines;
 - external observations such as model, network, clock, and environment inputs.
 
-The ontology becomes valuable when users can ask high-level questions without learning filesystem
-internals or joining vendor-specific tracing tables.
+The vocabulary should reuse OpenTelemetry and open provenance concepts where possible. A proprietary
+ontology is enabling structure, not defensibility by itself.
 
 ### 3. Compound workflows
 
@@ -121,21 +133,12 @@ SurrealFS gains defensibility by sitting below frameworks and above the local ex
 The kernel must stay framework-neutral. Integrations should translate framework events into one
 canonical run/span/commit model rather than create parallel schemas.
 
-### 5. Permissioned execution data
+### 5. Verifiable, interoperable evidence
 
-With explicit customer permission and strong isolation, aggregated execution data can improve:
-
-- failure classification;
-- automatic recovery suggestions;
-- evaluation suites;
-- policy defaults;
-- performance tuning;
-- detection of suspicious or wasteful behavior;
-- estimates of which actions are likely to produce useful artifacts.
-
-This is a potential data flywheel, not an automatic entitlement. Private source code, secrets, model
-inputs, and customer artifacts must remain protected. Useful aggregate signals should be designed to
-minimize collection and preserve tenant control.
+Portable state-transition receipts, deterministic roots, customer-controlled signatures, explicit
+external-effect records, and policy enforcement at publication can create trust beyond one UI. The
+format should align with OpenTelemetry correlation and open provenance/attestation formats. Lock-in
+through an opaque database or export format is evidence that this layer failed.
 
 ## The flywheel
 
@@ -144,13 +147,16 @@ flowchart LR
     I["More execution integrations"] --> C["More complete causal capture"]
     C --> W["Better explain, recover, and evaluate workflows"]
     W --> T["Greater trust and adoption"]
-    T --> O["More permissioned outcome signals"]
-    O --> P["Better policies and recovery intelligence"]
+    T --> P["More recovery cases + conformance evidence"]
     P --> I
 ```
 
 Every arrow must be validated. A trace corpus with incomplete causality or poor privacy controls can
 create liability rather than a moat.
+
+Permissioned aggregate outcome data may later improve failure classification or recovery suggestions,
+but private code, credentials, prompts, and customer artifacts make sharing sparse and biased. Treat
+that data as optional upside, never as the premise for funding the initial product.
 
 ## Competitive boundary
 
@@ -166,6 +172,16 @@ create liability rather than a moat.
 The competition is not “which database has graph traversal.” It is whether another product can
 deliver equivalent capture correctness and recovery/evaluation ergonomics across the execution
 surfaces customers actually use.
+
+Direct competitors validate adjacent demand and constrain the claims:
+
+| Product | What it already validates | Remaining SurrealFS hypothesis |
+|---|---|---|
+| AgentFS | Embedded filesystem, KV, tool logs, mounts, SDKs | Whether one semantic file+KV+span commit materially improves recovery |
+| TigerFS | ACID filesystem history, identity, savepoints, undo | Whether action-level boundaries and runtime KV avoid unsafe low-level recovery |
+| Git/Docker snapshots | File history, worktrees, turn-boundary undo | Whether runtime state and tool causality justify another control point |
+| E2B/Daytona | Isolated execution, snapshots, forks | Whether fine-grained explanation and minimal recovery add value alongside them |
+| LangGraph/DBOS | Durable workflow state and replay | Whether capturing uninstrumented workspace mutations closes a costly gap |
 
 ## Product surfaces that express the moat
 
@@ -221,7 +237,6 @@ Track metrics that indicate compounding product value:
 - number of cross-framework workflows using the same ontology;
 - evaluation reproducibility rate;
 - policy decisions supported by direct evidence rather than timestamps;
-- retention-adjusted growth of useful, permissioned execution patterns;
 - user adoption of rewind, fork, compare, and explain—not only storage volume.
 
 ## Falsification criteria
@@ -233,7 +248,7 @@ The moat thesis is false or weak if:
 - causal attribution regularly falls back to timestamp correlation;
 - users do not trust restoration or provenance enough to make decisions;
 - integrations require different semantics per framework;
-- data cannot be used responsibly or does not improve product outcomes;
+- the recovery/integration loop does not improve with additional conformance cases;
 - switching costs come mainly from an opaque export format;
 - a simple tracing database plus Git provides equivalent user value.
 

@@ -16,6 +16,8 @@ CommitRequest {
   repository_id
   branch_id
   expected_head
+  workspace_id
+  workspace_capability_proof
   request_id
   request_digest
   cause_id
@@ -31,22 +33,23 @@ CommitRequest {
 }
 ```
 
-The request digest covers every field that can change the result, excluding transport-only metadata.
-The daemon recomputes the digest from canonical encoding.
+The request digest covers every field that can change the result, excluding transport-only metadata
+and the raw bearer capability. It includes the capability identifier/hash and verified process-scope
+evidence. The daemon recomputes the digest from canonical encoding.
 
 ## Plan construction
 
 The semantic kernel builds a `CommitPlan` before entering the write transaction:
 
-1. Resolve repository, branch, session, and cause.
-2. Read the branch head and required current state using a consistent view.
-3. Validate permissions, policy, quotas, and operation preconditions.
-4. Apply requested operations to a pure in-memory model of affected objects.
-5. Derive ordered mutations, current-state updates, history versions, tombstones, relations, and
-   artifact manifests.
-6. Verify all referenced staged chunks exist and match declared metadata.
-7. Compute canonical mutation root and candidate commit ID.
-8. Record the expected branch head used to compute the plan.
+1. Resolve repository, branch, workspace, session, and cause.
+2. Verify the opaque capability, author span, process scope, expiry, workspace status, and base commit.
+3. Read the branch head and immutable base state root using a consistent view.
+4. Validate permissions, policy, quotas, quiescence, and operation preconditions.
+5. Apply the workspace delta to a pure persistent-tree reference model.
+6. Derive ordered mutations, new immutable nodes/root, explanation records, relations, and manifests.
+7. Verify all referenced staged chunks exist and match declared metadata.
+8. Compute canonical mutation root, state root, and candidate commit ID.
+9. Record the expected branch head used to compute the plan.
 
 A plan is immutable. If the expected head changes, the plan is discarded or explicitly rebased by
 the kernel; it is never silently applied to the new head.
@@ -84,21 +87,23 @@ The adapter performs the following in one explicit transaction:
    - If digest matches and receipt is complete, return the original result.
    - If digest differs, abort with `IdempotencyKeyReused`.
 2. **Branch fence.** Read branch record and require `head == expected_head` and writable status.
-3. **Dependency validation.** Require repository, cause, parents, chunks, policies, and referenced
+3. **Workspace/attribution validation.** Require the workspace to be open, capability hash and
+   process scope verified, author/cause bound, descendants quiescent, and base equal to expected head.
+4. **Dependency validation.** Require repository, cause, parents, chunks, policies, and referenced
    records to exist in the expected repository and state.
-4. **Commit uniqueness.** If deterministic commit ID already exists, require canonical content to
+5. **Commit uniqueness.** If deterministic commit ID already exists, require canonical content to
    match; otherwise treat it as corruption or identity collision.
-5. **Immutable writes.** Create commit, mutation, state-version, artifact, manifest, and evidence
-   records. No overwrite semantics are allowed for immutable IDs.
-6. **Current-state writes.** Create/update/delete/tombstone materialized inode, dentry, extent, xattr,
-   and KV records exactly as the plan specifies.
-7. **Relations.** Create deterministic causal and provenance relation records.
-8. **Branch advancement.** Set head to new commit, increment sequence/generation, and retain previous
+6. **Immutable writes.** Create persistent state nodes/root, commit, mutation, artifact, manifest,
+   and evidence records. No overwrite semantics are allowed for immutable IDs.
+7. **Optional projection writes.** Update a disposable root-keyed head projection only when enabled.
+8. **Relations.** Create deterministic causal and provenance relation records.
+9. **Workspace closure.** Mark the workspace committed and bind its final commit/root.
+10. **Branch advancement.** Set head to new commit, increment sequence/generation, and retain previous
    head in commit parents.
-9. **Receipt.** Create completed request receipt containing commit and response digest.
-10. **Commit.** Complete the transaction using the selected durability mode.
+11. **Receipt.** Create completed request receipt containing commit, root, and response digest.
+12. **Commit.** Complete the transaction using the selected durability mode.
 
-No response is successful before step 10.
+No response is successful before step 12.
 
 ## Expected-head conflicts
 
@@ -135,22 +140,23 @@ Special cases:
 - Imports retain source identity to avoid duplicate genesis or batch application.
 - A timeout after server commit is resolved by receipt lookup, not by replaying blindly.
 
-## Cause and span lifecycle
+## Workspace and span lifecycle
 
-A tool call can produce multiple commits:
+The initial contract maps one writable tool span to one workspace and one publish decision:
 
 ```text
 tool span starts
-  -> commit A
-  -> commit B
-  -> external observation
-  -> commit C
-tool span ends with result/error
+  -> open capability-bound workspace at commit H
+  -> stage file/KV/artifact changes and external-effect evidence
+  -> wait for approved descendants
+  -> success: publish one commit H' and finish span
+  -> error/cancel/timeout: abort workspace and finish span without internal state publication
 ```
 
-Each commit directly references the span. The span status can be completed later. A failed or
-interrupted span does not invalidate commits already acknowledged; it records that they occurred
-before failure.
+An explicit checkpoint ends one workspace and publishes one commit; continued work starts a new
+workspace, preferably under a child/checkpoint span. This permits a broader span to relate to several
+commits without silently turning syscalls into semantic history. A failure never invalidates an
+earlier explicit checkpoint, but uncheckpointed workspace state aborts.
 
 Starting and completing a span are themselves durable events when audit guarantees require them.
 For lower-overhead modes, start may be buffered but a commit must ensure its cause record exists in
@@ -170,6 +176,10 @@ A commit records its capture level. Product queries must never present semantic 
 syscall evidence.
 
 ## External side effects
+
+The canonical cross-boundary protocol, state machine, recovery grades, and proof criteria are defined
+in [External effects and recovery](16-external-effects-and-recovery.md). This section summarizes the
+commit-boundary rule.
 
 Database atomicity cannot roll back an email, network mutation, payment, deployment, or human action.
 Tool definitions declare side-effect class:
@@ -225,16 +235,14 @@ Changing mode affects future acknowledgements, not the historical label on prior
 
 ## State-root computation
 
-The commit transaction stores a state root only when it can be computed safely within the latency
-budget. The initial implementation may use:
+Every publish computes the new persistent state root before entering the final transaction. The plan
+contains canonical bytes/digests for every newly created path node and the complete root. The
+transaction creates missing immutable nodes idempotently and commits the root with evidence, branch,
+and receipt. No acknowledged commit may contain a pending or absent root.
 
-- mutation root synchronously;
-- state root synchronously for small repositories;
-- asynchronously verified state root with an explicit `pending/verified/failed` status for large
-  repositories.
-
-A pending root cannot be used as proof until verified. Root verification failure quarantines the
-repository or commit and emits a high-severity integrity event.
+Post-commit verification can be asynchronous for cost control. Root verification failure quarantines
+the repository or commit and emits a high-severity integrity event; it does not retroactively invent
+another root.
 
 ## Recovery procedure
 
@@ -243,9 +251,9 @@ On open:
 1. Let SurrealKV recover its storage structures.
 2. Confirm schema and migration state.
 3. Read repository and last branch-head records.
-4. Verify every branch head resolves to a complete commit.
-5. Check complete receipts reference complete commits.
-6. Reconcile interrupted spans and sessions.
+4. Verify every branch head resolves to a complete commit and immutable state root.
+5. Check complete receipts reference the same commit/root as their branch outcome.
+6. Abort/reconcile interrupted unpublished workspaces and spans; never auto-publish them.
 7. Resume bounded chunk verification/GC/migration jobs.
 8. Optionally verify recent commit mutation roots and sampled content.
 9. Enter writable service only if required invariants pass.
@@ -258,12 +266,13 @@ Bound:
 
 - mutations per commit;
 - serialized transaction bytes;
-- current/history records touched;
+- immutable nodes, explanation records, and optional projections touched;
 - relation count;
 - directory rename subtree work;
 - artifact manifest size;
 - read-set detail.
 
-Operations exceeding limits use staged plans or multiple commits with explicit batch/workflow records.
-Partial commits remain visible as their own states; the UI must represent batch progress honestly.
-
+An operation that cannot fit one publication transaction is rejected or redesigned to use hidden,
+idempotent staging plus one bounded final root/branch transaction. Multiple visible commits are allowed
+only as explicit user-visible checkpoints/workflow steps, never as an implementation detail falsely
+presented as one atomic tool action.

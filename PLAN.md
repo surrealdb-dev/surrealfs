@@ -2,10 +2,11 @@
 
 ## Objective
 
-Build SurrealFS as a causal execution substrate for agents, using embedded SurrealDB over SurrealKV
-as the canonical store. The initial product must make agent state inspectable, forkable, attributable,
-and recoverable without maintaining multiple storage engines or duplicating filesystem semantics in
-every language SDK.
+Build SurrealFS as a causal execution substrate for agents. Use embedded SurrealDB over SurrealKV as
+the preferred proof store, while testing the same minimal causal-commit contract against
+SQLite/AgentFS before production selection. The initial product must make agent state inspectable,
+forkable, attributable, and recoverable without maintaining multiple production engines or
+duplicating filesystem semantics in every language SDK.
 
 The reconstruction succeeds only if it produces user-visible capabilities that the existing AgentFS
 architecture cannot provide reliably:
@@ -21,17 +22,23 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
 
 ## Fixed decisions
 
-1. **Canonical engine:** embedded SurrealDB backed by SurrealKV.
+1. **Preferred candidate, not conclusion:** embedded SurrealDB backed by SurrealKV must win the
+   Phase 0 parity spike and production gates.
 2. **One production format:** no SurrealKV-only production adapter in the first release.
 3. **One writer:** the Rust daemon owns the database directory and all state transitions.
 4. **One semantic kernel:** language SDKs call the daemon; they do not reimplement filesystem rules.
-5. **Explicit history:** commits and state versions are application records.
+5. **Immutable roots:** commits reference content-addressed namespace/inode/extent/KV roots;
+   materialized heads are disposable projections.
 6. **Graph is canonical:** provenance relations live in the same transactionally consistent store.
 7. **Content addressing:** chunks and artifacts are named by hashes and treated as immutable.
 8. **Portable escape hatch:** logical export/import is stable across physical engine upgrades.
 9. **Restricted raw access:** raw reads are supported; writes to system records use domain commands.
 10. **Honest replay:** SurrealFS promises captured-state restoration, not automatic determinism of
     external model or network behavior.
+11. **Transactional publication:** tools write privately and publish through an explicit
+    expected-head workspace commit; `close`/`fsync` never publish.
+12. **Enforced attribution:** captured writes require daemon-issued workspace authority and verified
+    process scope; trace context is correlation only.
 
 ## Workstreams
 
@@ -47,7 +54,7 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
 
 - Define schemafull SurrealDB tables and relation tables.
 - Implement deterministic record IDs and schema versioning.
-- Implement immutable history plus materialized heads.
+- Implement immutable persistent state roots plus optional measured/rebuildable head projections.
 - Implement staged, content-addressed chunks backed by SurrealKV's value log.
 - Implement atomic commit application and expected-head conflict detection.
 - Implement logical export, import, integrity verification, and checkpoint policy.
@@ -57,7 +64,7 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
 - Build `surrealfsd` as the only store owner.
 - Centralize inode, dentry, extent, KV, and tool-span semantics in Rust.
 - Implement streaming reads/writes and an open-handle table.
-- Implement FUSE/NFS/sandbox adapters against the same kernel.
+- Implement the Linux SDK/sandbox workspace first; add FUSE/NFS only after workflow demand.
 - Provide backpressure, cancellation, quotas, and graceful shutdown.
 
 ### D. SDK and integrations
@@ -79,29 +86,32 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
 
 ## Phase sequence
 
-### Phase 0 — proof package
+### Phase 0 — decision closure and dual-store spike
 
 Deliver:
 
-- accepted architecture decisions;
+- accepted immutable-root and transactional-workspace decisions;
 - draft schema and IDs;
-- benchmark harness skeleton;
+- the same small causal-commit protocol on SQLite/AgentFS and SurrealDB/SurrealKV;
+- crash/reopen, ancestry, export, lifecycle, complexity, and workload comparison;
 - a representative imported AgentFS database;
 - product-query fixtures;
+- 5–10 discovery interviews and at least three prototype candidates;
 - agreed performance and correctness budgets.
 
-Exit only when every invariant in the product contract has an owner and a test strategy.
+Exit with an explicit engine/build-vs-extend decision. Correctness failures disqualify an adapter;
+performance does not compensate for partial atomicity, missing roots, or false attribution.
 
-### Phase 1 — atomic vertical slice
+### Phase 1 — Linux causal-workspace vertical slice
 
 Deliver one executable path:
 
 1. Create repository and branch.
-2. Begin run and tool span.
-3. Create directory and file, write chunked content, update one KV key.
-4. Commit state, provenance, and branch head atomically.
-5. Close and reopen the database.
-6. Read the exact state and answer `tool_call -> caused -> commit -> produced -> artifact`.
+2. Begin a run/tool span and launch a capability-bound private workspace/process tree.
+3. Stage directory/file, chunk, KV, and artifact changes invisible to committed readers.
+4. Publish an immutable state root, provenance, branch head, and receipt atomically—or abort.
+5. Close/reopen, create a constant-time pre-action fork, and compare state.
+6. Answer `tool_call -> workspace -> caused -> commit -> produced -> artifact`.
 
 Exit criteria:
 
@@ -109,40 +119,54 @@ Exit criteria:
 - a fault before commit exposes none of the new metadata;
 - a retry with the same request ID creates no duplicates;
 - a conflicting expected branch head is rejected;
+- forged/missing capability, detached child, nested writer, and bypass attempts fail closed;
 - the graph query returns only committed relationships.
 
-### Phase 2 — filesystem correctness
+### Phase 2 — design-partner recovery trial
+
+Run the opinionated workflow on real failed coding-agent attempts: identify the first harmful
+transition, restore/fork the exact pre-action state, run an alternative, compare files/KV/artifacts/
+causality, and choose/export the result. Measure baseline and prototype recovery time, rerun cost,
+integration effort, overhead, accuracy, repeat use, and willingness to continue.
+
+Exit only when at least two of three partners repeat the workflow and a material outcome improves.
+The proposed gate is at least 50% lower median recovery time or 30% lower rerun cost. Otherwise
+`NARROW` or `STOP`; do not compensate with more filesystem features.
+
+### Phase 3 — demand-gated filesystem correctness
 
 Implement lookup, create, mkdir, read, write, truncate, rename, link, symlink, unlink, directory
 listing, metadata, permissions, timestamps, xattrs, and open-handle semantics. Validate against the
 reference model and relevant mount-level tests.
 
-Exit only when storage choice is invisible to semantic tests.
+Begin only after Phase 2 `GO`. Exit when the partner-required subset passes semantic/crash tests and
+storage choice remains invisible to the domain contract.
 
-### Phase 3 — snapshots, forks, and diffs
+### Phase 4 — richer snapshots, diffs, and optional merge
 
-Implement named snapshots, branch creation from arbitrary commits, branch-local materialized heads,
-commit-range diffs, content diffs, and branch ancestry. Add background branch flattening only after
-the simple correct implementation is measured.
+Harden named snapshots and root-based forks, add correct ancestry/commit-range/content/provenance
+diffs, and implement merge only if partner recovery requires it. Generation never proves ancestry;
+head projections remain optional and root-keyed.
 
-### Phase 4 — causal capture and artifacts
+### Phase 5 — attribution and integration hardening
 
-Implement run lifecycle, nested spans, tool calls, read/write sets, artifacts, external observations,
-policy decisions, and evaluations. Make causal IDs part of every mutation path.
+Extend the enforced workspace boundary across the integrations demanded by partners. Implement run
+lifecycle, nested observational spans, explicit nested/concurrent writer policy, read/write sets,
+artifacts, external observations, policy decisions, and evaluations.
 
-### Phase 5 — SDK convergence and compatibility
+### Phase 6 — SDK convergence and compatibility
 
 Move all non-Rust SDKs to RPC. Add compatibility shims and deprecate direct database access. Ensure
 that a conformance test produces identical logical results through every supported SDK.
 
-### Phase 6 — migration and operational hardening
+### Phase 7 — migration and operational hardening
 
 Implement AgentFS v0.4 import, backup/restore, logical export/import, upgrade checks, schema rollout,
 integrity verification, quotas, observability, and disaster-recovery exercises.
 
-### Phase 7 — product workflows
+### Phase 8 — workflow expansion
 
-Ship the features that justify the reconstruction:
+Expand beyond the proven recovery wedge only where evidence justifies it:
 
 - explain why a path exists;
 - rewind before a failed action;
@@ -151,7 +175,7 @@ Ship the features that justify the reconstruction:
 - evaluate a run against policy and historical baselines;
 - identify the first causal divergence between two branches.
 
-### Phase 8 — production decision
+### Phase 9 — production decision
 
 Compare the implementation against the previously agreed budgets. Proceed only if correctness,
 performance, upgrade safety, and product value all pass. The database choice is not allowed to pass
@@ -163,11 +187,13 @@ on architectural enthusiasm alone.
 
 - No acknowledged commit is partially visible.
 - A branch head always references an existing committed record.
-- Current materialized state is derivable from retained history.
+- Every commit references a complete immutable state root.
+- Optional materialized heads are disposable, root-keyed, and rebuildable.
 - Every system-created relation references valid endpoints.
 - Chunk references resolve to bytes whose hash matches their record ID.
 - Link counts, directory membership, and open-unlinked behavior remain consistent.
 - Imports label unknown provenance rather than fabricating it.
+- Captured tool writes require verified workspace capability/process scope; missing context rejects.
 
 ### Durability
 
@@ -186,6 +212,7 @@ on architectural enthusiasm alone.
 ### Product value
 
 - At least three provenance/recovery workflows are meaningfully simpler than reconstructing logs.
+- The first recovery workflow is repeatedly used by design partners before broad POSIX investment.
 - Forking does not copy the complete state.
 - A user can explain an artifact without manually correlating unrelated tables.
 - The graph improves evaluation or recovery decisions, not merely dashboard aesthetics.
@@ -233,7 +260,10 @@ Stop or change direction if any of the following remains true after focused opti
   capabilities it enables;
 - users reject the daemon ownership model required for consistent semantics;
 - branch and history storage grows without an acceptable retention and compaction strategy.
+- users do not repeatedly choose the recovery/fork workflow over Git, copy, worktree, or sandbox
+  snapshots after a real trial;
+- the SQLite/AgentFS baseline provides equivalent semantics with materially lower risk and the
+  SurrealDB/SurrealKV preference cannot justify its added dependency cost.
 
 If a kill criterion is hit, preserve the domain model, logical export, and semantic kernel. Those are
 more valuable and portable than the selected engine.
-

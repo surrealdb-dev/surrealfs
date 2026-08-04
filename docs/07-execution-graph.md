@@ -13,6 +13,9 @@ The graph is canonical and transactionally linked to state. It is not reconstruc
 ```text
 agent -> started -> run -> contains -> span
 run/span -> invoked -> tool_call
+span/tool_call -> owns -> workspace
+workspace -> based_on -> commit
+workspace -> published_as -> commit
 span/tool_call -> caused -> commit
 span/tool_call -> read/observed -> artifact/state
 commit/span -> produced -> artifact
@@ -85,12 +88,17 @@ A tool-call record stores:
 - produced commits and artifacts;
 - declared observations and external side effects.
 
-Tool completion can occur after its commits. A tool error can therefore coexist with valid committed
-state changes, which is essential for accurate recovery.
+In the initial contract, one writable tool span owns one workspace and either publishes one commit on
+success or aborts on error/cancel/timeout. An explicit checkpoint publishes that workspace and starts
+a new workspace under a visible checkpoint/child-span boundary. A later tool error can coexist with
+an earlier checkpoint commit, but uncheckpointed state is never silently retained.
 
 ## Causal attribution
 
-Every commit has one direct cause record. Additional context flows through span ancestry.
+Every commit has one direct cause record. Additional context flows through span ancestry. For
+`CAPTURED` tool/process attribution, the direct cause is accepted only when publication presents the
+daemon-issued workspace capability and verified process scope bound when the workspace opened.
+W3C/OpenTelemetry trace identifiers correlate records but never authorize publication.
 
 Cause types:
 
@@ -103,7 +111,17 @@ Cause types:
 - legacy unknown.
 
 `unknown` is allowed only when source evidence cannot provide attribution, such as importing an
-overwrite-only legacy database. It is explicit and measurable.
+overwrite-only legacy database. It is explicit and measurable. Missing capability/context on a live
+captured write is rejected rather than downgraded to unknown. System, migration, and maintenance work
+uses a typed principal/cause and is never labeled captured tool execution.
+
+The initial process contract also records:
+
+- workspace/mount namespace and cgroup/process-scope identity;
+- whether descendants inherited through the approved launcher;
+- quiescence, timeout, kill, and abort evidence;
+- nested/concurrent writer policy outcome;
+- detected attempts to access the committed lower state or database directly.
 
 ## State observations
 
@@ -147,6 +165,9 @@ A fork records:
 
 Comparisons use ancestry and state roots to identify the first divergent commit, then traverse causes
 and artifacts around the divergence.
+
+First-parent history follows the `first_parent` record link from the selected commit. Commit
+generation is useful for diagnostics and indexes but never determines membership in a branch path.
 
 ## Evaluations
 
@@ -270,4 +291,3 @@ commit and relation evidence when policy permits.
 - explain-path latency and completeness;
 - live subscription recovery/deduplication rate;
 - product use of explain, rewind, fork, compare, and impact queries.
-

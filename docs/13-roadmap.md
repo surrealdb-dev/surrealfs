@@ -28,21 +28,24 @@ team can execute the same sequence with a longer calendar.
 - Preserve logical export from the first durable prototype.
 - Treat schema and query changes like API changes.
 
-## Phase 0 — proof package
+## Phase 0 — decision closure and dual-store spike
 
 ### Goal
 
-Decide whether SurrealDB + SurrealKV can support the required atomic semantic kernel and whether the
-moat hypothesis is worth an implementation investment.
+Close the foundational semantics, test the exact same minimal causal-commit protocol on
+SurrealDB/SurrealKV and SQLite/AgentFS, and decide whether the product and preferred engine merit the
+Linux workspace proof. This is not two production adapters.
 
 ### Scope
 
 | Work item | Effort | Deliverable |
 |---|---:|---|
-| Freeze product contracts and invariants | S | Reviewed versions of docs 01-07 |
+| Freeze product contracts and invariants | S | Reviewed product contract plus ADRs 0004/0005 |
+| Immutable-root spike | M | Minimal persistent namespace/inode/extent/KV root with historical read/fork |
+| Workspace/attribution threat model | M | Linux overlay, capability, cgroup, quiescence, and bypass contract |
 | License/commercial review | S | Written decision for embedded distribution and hosted service |
 | Pin engine/toolchain baseline | S | Minimal Cargo workspace and release manifest |
-| Transaction spike | S | Atomic records + relations + conditional branch-head update |
+| Dual transaction spike | M | Same atomic root + relations + conditional head protocol on both candidates |
 | Chunk/value strategy spike | S | Measured options for in-DB chunks vs managed pack files |
 | Crash harness | M | Kill points before/after engine commit and reopen verifier |
 | Public SDK lifecycle spike | S | Drop/shutdown, lock-release, reopen, and error-observability report |
@@ -54,10 +57,19 @@ moat hypothesis is worth an implementation investment.
 
 - Create the Rust workspace described in `PLAN.md`.
 - Define domain IDs, canonical serialization, mutation enum, commit receipt, and storage trait.
+- Define the exact small `CausalCommitStore` conformance scenario once: base root, five file changes,
+  rename/delete, 20 KV changes, artifact, span, expected-head publish, receipt, reopen, fork, diff,
+  first-parent log, and explanation.
+- Implement that scenario on embedded SurrealDB/SurrealKV and SQLite/AgentFS with normalized durable
+  acknowledgement. Keep both spikes narrow; do not build two full filesystems or production adapters.
 - Apply a minimal schema for repository, branch, commit, mutation, span/tool call, inode/dentry,
   file extent/chunk manifest, KV version, and idempotency receipt.
-- Prove one transaction can validate expected head, insert an immutable commit and mutations,
-  relate its author span, advance the branch, and store the request receipt.
+- Prove one transaction can validate expected head, insert immutable persistent nodes/root, commit
+  and mutations, relate its verified author span, advance the branch, and store the request receipt.
+- Prove branch creation from a retained root performs no full-state copy and that first-parent logs
+  follow links rather than generation ranges.
+- Prototype a private overlay whose staged file/KV state is invisible until explicit publish; write
+  down `close`, `fsync`, abort, conflict, crash, descendant, and timeout behavior.
 - Run concurrent writers from separate client tasks and verify one wins cleanly.
 - Terminate the daemon immediately before and after database commit; query the receipt on reopen.
 - Benchmark 1k/10k mutations per commit and graph fan-out representative of traces.
@@ -71,15 +83,20 @@ moat hypothesis is worth an implementation investment.
   the public SDK.
 - Interview design partners around: failed-run recovery, fork/compare, artifact provenance, and
   policy/audit. Ask for current workflow and cost, not feature enthusiasm.
+- Compare “extend AgentFS” with “ship separate SurrealFS” using existing mounts/SDKs, migration,
+  implementation effort, semantics, and distribution—not only database microbenchmarks.
 
 ### Exit criteria
 
-- Atomicity and idempotency spike passes deterministic process-kill tests.
+- Both adapter spikes pass the same atomicity, immutable-root, idempotency, ancestry, export, and
+  deterministic process-kill contract, or the report explains a disqualifying failure.
 - Conditional head movement behaves correctly under at least 100 concurrent randomized campaigns.
 - No required feature depends on an internal KVS API.
 - Public SDK lifecycle either passes the required shutdown/reopen contract or has a supported
   upstream capability plan; crash correctness does not rely on graceful shutdown.
 - Logical export/restore reproduces heads and state root for the spike.
+- The engine report compares implementation size/complexity, crash/reopen, lifecycle, p99 latency,
+  disk amplification, export, ancestry/causal queries, and migration with raw reproducible output.
 - Initial latency, memory, and disk results are within a credible optimization distance of target.
 - Legal approves the intended next-stage use or identifies an acceptable agreement/cost.
 - At least three design partners rank one target workflow as a current high-cost problem and agree
@@ -92,29 +109,32 @@ moat hypothesis is worth an implementation investment.
 - Point/range metadata access is structurally too expensive after schema/index profiling.
 - No user has a painful workflow that requires causal filesystem state rather than ordinary tracing
   or version control.
+- Neither adapter can support the contract without weakening atomicity, roots, or attribution.
 
 ### Phase artifact
 
 An evidence report with raw benchmark/crash output and a written `GO`, `NARROW`, or `STOP` decision.
 
-## Phase 1 — atomic vertical slice
+## Phase 1 — Linux causal-workspace vertical slice
 
 ### Goal
 
-Deliver the smallest end-to-end SurrealFS experience: one repository, one branch, one run/tool
-span, file and KV mutations, one atomic durable commit, reopen, and causal explanation.
+Deliver the smallest end-to-end recovery substrate: one capability-bound Linux tool workspace, one
+immutable base root, private file/KV changes, one explicit publish/abort decision, durable reopen,
+constant-time fork, causal diff, and explanation.
 
 ### Core backlog
 
 #### Domain and storage
 
 - Implement strongly typed IDs and scoped repository types.
-- Implement canonical mutation encoding and state-root hashing.
+- Implement canonical mutation encoding and the minimal persistent namespace/inode/extent/KV tree.
 - Implement SurrealDB adapter with checked-in, numbered migrations.
 - Implement repository creation and root commit.
 - Implement branch head compare-and-swap and idempotency receipts.
 - Implement staging for chunks plus abandoned-staging cleanup.
-- Implement create/read/replace file, mkdir, list, stat, and KV get/put/delete.
+- Implement create/read/replace file, mkdir, list, stat, KV get/put/delete, and root-based historical
+  read/fork/diff for the proof subset.
 - Implement run start/finish and tool span start/finish.
 - Link span -> caused -> commit and commit -> produced -> artifact.
 
@@ -122,7 +142,8 @@ span, file and KV mutations, one atomic durable commit, reopen, and causal expla
 
 - Start/stop lifecycle, exclusive directory lock, local socket permissions, health/readiness.
 - Protocol negotiation, structured errors, deadlines, request IDs, and receipt lookup.
-- Workspace open/stage/commit/abort with lease and quota.
+- Workspace open/launch/stage/publish/abort with lease, quota, daemon-issued capability, mount
+  namespace, cgroup process scope, quiescence, and strict no-detached-descendant policy.
 - Read tree at explicit commit.
 - Basic `Explain.Target` for file -> commit -> span -> run.
 
@@ -132,7 +153,7 @@ span, file and KV mutations, one atomic durable commit, reopen, and causal expla
 surrealfs init
 surrealfs daemon start|status
 surrealfs run start|finish
-surrealfs workspace open|write|kv-put|commit
+surrealfs workspace open|launch|publish|abort
 surrealfs tree ls|cat
 surrealfs explain <path>
 surrealfs verify
@@ -146,24 +167,70 @@ surrealfs export|import
 - Fault injection at all Phase 1 commit points.
 - Golden logical export and restore.
 - Basic auth via peer credentials and repository capabilities.
+- Negative tests for forged trace/span context, missing/expired capability, cross-workspace handle,
+  direct lower/database access, nested writer, and detached descendant.
+- A branched-history fixture proving first-parent pagination excludes unrelated same-generation
+  commits.
 - Sanitized structured logging and request metrics.
 
 ### Exit criteria
 
-From a clean install, a user can create a repository, record a tool span that writes a file and KV
-checkpoint atomically, kill/restart the daemon, read the exact commit, and ask which run/tool caused
-the file. Retrying the timed-out command returns the same receipt. A full logical export restores
+From a clean install, a user can launch a tool in a private workspace, observe its file/KV changes
+only inside that process tree, publish one immutable-root commit, kill/restart the daemon, fork the
+pre-action root, diff the result, and ask which verified run/tool caused the file. Abort exposes no
+staged logical state. Retrying a timed-out publish returns the same receipt. A logical export restores
 the same state root in a second location.
 
 ### Effort
 
 `L` for a narrow prototype; `XL` if shipped as supported cross-platform software.
 
-## Phase 2 — filesystem correctness
+## Phase 2 — design-partner recovery trial
 
 ### Goal
 
-Turn the narrow tree store into a credible filesystem semantic kernel and one mounted integration.
+Prove the differentiated workflow immediately, before broad POSIX or mount investment.
+
+### Backlog
+
+- Recruit at least three teams running expensive or long-lived coding-agent attempts.
+- Measure their baseline failure frequency, time to diagnose/recover, rerun time/cost, directory/
+  worktree/snapshot practices, integration effort, and trust/provenance requirements.
+- Reproduce a real failed or undesirable run in the Phase 1 Linux workspace.
+- Ship the opinionated flow: timeline -> first harmful transition -> exact pre-action fork -> alternate
+  retry -> file/KV/artifact/causal comparison -> choose/export result.
+- Measure capture completeness, integration time, runtime/storage overhead, first-divergence accuracy,
+  recovery time, avoided rerun cost, repeat usage, and willingness to integrate/pay.
+- Test coexistence with Git, AgentFS where relevant, and the partner's sandbox/tracing stack.
+- Record external effects and force reconciliation instead of implying they roll back with local state.
+
+### Exit criteria
+
+These are proposed investment gates, not empirical facts:
+
+- three partners supply real failure cases and can complete the workflow;
+- at least two use recovery/fork more than once without implementation-team operation;
+- median recovery time improves by at least 50%, or rerun cost falls by at least 30%;
+- users correctly select the recovery point and trust the explanation enough to act on it;
+- integration/overhead is acceptable and at least one partner commits to continued integration.
+
+### Stop/narrow conditions
+
+- users prefer Git/worktree/copy/sandbox recovery after trying the complete workflow;
+- the state transition is technically correct but does not change a recovery decision;
+- integration burden or capture overhead exceeds the measured benefit;
+- no repeated use occurs during the agreed trial window.
+
+### Effort
+
+`M` engineering plus product/design-partner time. This phase gates every later breadth phase.
+
+## Phase 3 — demand-gated filesystem correctness
+
+### Goal
+
+Only after Phase 2 passes, turn the narrow tree store into the smallest additional filesystem subset
+required by retained partners and, if demanded, one mounted integration.
 
 ### Backlog
 
@@ -171,7 +238,8 @@ Turn the narrow tree store into a credible filesystem semantic kernel and one mo
 - Range writes, truncation, sparse holes, content-defined/fixed chunk strategy decision.
 - Atomic rename matrix, hard links, symlinks, unlink-while-open, rename-while-open.
 - Permissions, ownership mapping, timestamps, xattrs, umask, and explicit unsupported operations.
-- Buffered mount workspaces and fsync/close/barrier mapping.
+- Explicit mount workspace/checkpoint control; `fsync`/`close` remain workspace-local and never
+  implicitly publish.
 - Read cache keyed by immutable commit/inode/content identity.
 - Concurrent handle and branch-head conflict behavior.
 - Mount recovery after daemon restart and stale-handle errors.
@@ -185,6 +253,7 @@ Turn the narrow tree store into a credible filesystem semantic kernel and one mo
 ### Exit criteria
 
 - Documented POSIX subset passes its semantic and crash suite.
+- Phase 2 has a recorded `GO` and each added operation/mount is tied to a partner workload.
 - No mounted operation can create state without a commit/mutation author boundary.
 - Normal code-edit workload meets agreed p99 latency and memory SLO.
 - One design partner can run a sandbox workload on a mounted SurrealFS repository without semantic
@@ -194,7 +263,7 @@ Turn the narrow tree store into a credible filesystem semantic kernel and one mo
 
 `XL`. Filesystem correctness is likely the largest early engineering risk.
 
-## Phase 3 — snapshots, forks, diffs, and merge
+## Phase 4 — richer snapshots, diffs, and optional merge
 
 ### Goal
 
@@ -203,12 +272,14 @@ Make immutable history useful to agent workflows rather than merely auditable.
 ### Backlog
 
 - Named snapshots as commit references.
-- Constant-time branch/fork creation from any retained commit.
-- Commit ancestry, generation numbers, and lowest-common-ancestor queries.
+- Harden the constant-time branch/fork creation introduced in Phase 1.
+- Correct first-parent/ancestor traversal, optional verified skip indexes, and lowest-common-ancestor
+  queries; generation alone never proves ancestry.
 - Tree/KV diff at summary and metadata levels.
 - Text content diff with size/encoding bounds; binary summaries.
 - Provenance diff: which spans/policies/evaluations explain changed state.
-- Three-way merge engine for dentries, file content, metadata, and KV.
+- Three-way merge engine only if the Phase 2 workflow demonstrates that selecting/exporting one fork
+  is insufficient.
 - Typed conflict objects and conflict-resolution workspaces.
 - Merge commits with two parents and complete resolution mutations.
 - Read-only snapshot mounts and branch checkout behavior.
@@ -224,22 +295,25 @@ retained histories and removes only proven unreachable staged/chunk content.
 
 ### Product checkpoint
 
-Measure time saved and successful recovery rate versus users' existing copy-directory/git/manual
-workflow. If fork/diff is not repeatedly used, narrow before expanding graph features.
+Reconfirm the Phase 2 outcome metrics. If richer diff/merge is not repeatedly used, omit merge and
+retain safe fork/select/export.
 
 ### Effort
 
 `L` to `XL`, depending on merge scope.
 
-## Phase 4 — causal capture and artifacts
+## Phase 5 — attribution and integration hardening
 
 ### Goal
 
-Build the execution graph deeply enough to answer high-value causal questions reliably.
+Extend the enforced Phase 1 capture boundary to the integrations and graph depth demanded by the
+validated workflow.
 
 ### Backlog
 
 - Nested spans, normalized tool calls, ordered events, retries, and external-effect descriptors.
+- Explicit nested/concurrent writable-workspace semantics before enabling them; no implicit sharing.
+- Subprocess propagation and bypass conformance across supported launchers/platforms.
 - Environment/input/output manifests with redaction and classifications.
 - Artifact registration, content manifests, derivation, and file-at-commit linkage.
 - Policy decision and approval records.
@@ -266,7 +340,7 @@ Build the execution graph deeply enough to answer high-value causal questions re
 
 `L`.
 
-## Phase 5 — SDK convergence and compatibility
+## Phase 6 — SDK convergence and compatibility
 
 ### Goal
 
@@ -296,7 +370,7 @@ Make SurrealFS adoptable without binding clients to Rust or the database schema.
 
 `L` across languages; prioritize based on actual users.
 
-## Phase 6 — migration and operational hardening
+## Phase 7 — migration and operational hardening
 
 ### Goal
 
@@ -331,11 +405,11 @@ Safely move existing AgentFS repositories and operate SurrealFS through upgrades
 
 `L`.
 
-## Phase 7 — product workflows and moat validation
+## Phase 8 — workflow expansion and moat validation
 
 ### Goal
 
-Turn infrastructure into repeatable outcomes that generate switching costs and learning effects.
+Expand beyond the proven recovery wedge only when evidence supports another repeatable outcome.
 
 ### Candidate workflows
 
@@ -353,7 +427,8 @@ Choose at most two based on partner evidence.
 - Saved explanations/comparisons with shareable scoped links/export.
 - Evaluation harness and fork orchestration.
 - Failure signatures and recovery templates.
-- Permissioned aggregate metrics with opt-in, retention, export, and deletion controls.
+- Optional permissioned aggregate metrics only when a concrete product use and privacy approval exist;
+  this is not a phase exit or moat assumption.
 - Integration marketplace or adapter kit for capture/enforcement points.
 - Usage/value instrumentation: recovery time, successful variants, audit preparation time, avoided
   reruns, explanation query completion.
@@ -372,7 +447,7 @@ Choose at most two based on partner evidence.
 
 `L`, but product iteration—not raw implementation—is the pacing factor.
 
-## Phase 8 — production decision
+## Phase 9 — production decision
 
 ### Goal
 
@@ -388,7 +463,7 @@ Decide whether to scale, narrow to a component, replace the engine, or stop.
 - unit economics at representative storage/trace volume;
 - design-partner adoption, retention, workflow frequency, and outcome improvement;
 - engine-change cost observed to date;
-- privacy/governance approval for any learning flywheel;
+- privacy/governance approval for any optional aggregate learning feature;
 - top residual risks with owners and contingencies.
 
 ### Decisions
@@ -416,10 +491,12 @@ engineering/operational complexity exceeds attainable value.
 ## Cross-phase dependency map
 
 ```text
-domain invariants
-  -> atomic commit vertical slice
-      -> filesystem semantics -> snapshots/forks/diffs
-      -> execution capture ----> product explanations
+domain decisions + dual-store spike
+  -> Linux causal workspace + immutable roots
+      -> real recovery trial
+          -> demand-gated filesystem breadth
+          -> attribution/integration hardening
+          -> richer diff/optional merge
       -> logical export --------> migration/upgrades
       -> protocol --------------> SDKs/integrations
 
@@ -447,33 +524,33 @@ No contributor owns “all correctness.” Cross-boundary changes require the re
 1. Create Rust workspace and CI skeleton.
 2. Pin toolchain and embedded engine revision/features.
 3. Define IDs and canonical encoding crate.
-4. Define mutation and commit domain types.
+4. Define mutation, persistent state-node/root, workspace, and commit domain types.
 5. Implement reference in-memory repository model.
-6. Apply core schema migration to temporary SurrealKV database.
+6. Implement the same minimal store contract in SQLite/AgentFS and SurrealDB/SurrealKV spikes.
 7. Implement release/schema manifest and startup compatibility check.
 8. Implement exclusive database-directory lock.
-9. Implement repository/root commit creation.
+9. Implement repository/root commit and immutable empty state-root creation.
 10. Implement branch expected-head transaction.
 11. Implement request idempotency receipt.
 12. Implement chunk hashing and staging state.
-13. Implement inode/dentry create/read/list.
+13. Implement minimal persistent namespace/inode/extent/KV tree create/read/path-copy.
 14. Implement file replacement and content read.
 15. Implement KV get/put/delete.
 16. Implement run and span lifecycle.
-17. Implement atomic workspace commit across file + KV + span graph.
-18. Implement state-root calculator and verifier.
+17. Implement capability-bound Linux workspace launch, process scope, quiescence, publish, and abort.
+18. Implement atomic root + file/KV + span graph + branch + receipt publication.
 19. Add named transaction fault points.
 20. Add kill/reopen test controller.
 21. Define protocol negotiation and error schema.
 22. Expose local socket daemon health and repository APIs.
-23. Expose workspace streaming API.
+23. Expose workspace launch/stream/publish/abort API.
 24. Build CLI for vertical slice.
-25. Implement file explanation query.
+25. Implement correct first-parent pagination, file explanation, fork, and causal diff queries.
 26. Implement domain event sequence/subscription catch-up.
 27. Implement minimal logical export.
 28. Implement logical import into empty target.
 29. Build representative workload benchmark harness.
-30. Publish Phase 0/1 evidence report and re-evaluate go/no-go.
+30. Run the first design-partner recovery trial and publish `GO`, `NARROW`, or `STOP` evidence.
 
 ## Definition of done for every issue
 

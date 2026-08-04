@@ -74,7 +74,7 @@ Command examples:
 
 - `Repository.Create`, `Repository.Archive`
 - `Branch.Create`, `Branch.Move`, `Branch.Merge`
-- `Workspace.Open`, `Workspace.Commit`, `Workspace.Abort`
+- `Workspace.Open`, `Workspace.Launch`, `Workspace.Publish`, `Workspace.Abort`
 - `Run.Start`, `Run.Finish`, `Run.Cancel`
 - `Span.Start`, `Span.RecordInput`, `Span.Commit`, `Span.Finish`
 - `Artifact.Register`, `Evaluation.Record`, `Policy.RecordDecision`
@@ -102,8 +102,8 @@ principal        derived from authenticated session, never trusted from payload
 deadline         absolute or relative execution deadline
 expected_head    required for head-moving mutations unless explicitly force-authorized
 run_id           optional execution context
-span_id          optional causal author
-trace_context    operational tracing only; not a replacement for run/span IDs
+  span_id          causal context for non-workspace events; bound at Workspace.Open for writes
+  trace_context    correlation only; never publication authority
 command          typed body
 ```
 
@@ -134,26 +134,33 @@ let ws = client.workspace().open(OpenWorkspace {
     repository,
     branch: "main",
     base: ExpectedHead::Current,
+    author_span: span_id,
+    process_policy: ProcessPolicy::NoDetachedDescendants,
 }).await?;
 
-ws.write("/report.md", bytes, WriteMode::Replace).await?;
-ws.kv_put("agent/checkpoint", checkpoint).await?;
-ws.register_artifact("/report.md", ArtifactKind::Report).await?;
+let tool = ws.launch(command).await?; // descendants inherit the scoped workspace
+tool.wait_for_quiescence().await?;
 
-let receipt = ws.commit(CommitOptions {
+let receipt = ws.publish(PublishOptions {
     request_id,
-    span_id,
     message: "produce final report",
     durability: Durability::Durable,
 }).await?;
 ```
 
-The server may stage large chunks before the final transaction, but staged content is invisible
-until the atomic commit succeeds. Workspaces have leases, byte/count limits, explicit abort, and
-garbage collection after expiration.
+The SDK handle carries an opaque, short-lived workspace capability. Its hash/identity is bound to the
+repository, base commit, principal, author span, process scope, permissions, and expiry; the raw
+secret is never persisted or accepted from a trace header. File, KV, and artifact writes made by the
+launched process tree use that workspace automatically.
 
-Mounted filesystems map close/fsync/barrier behavior to workspace commits as described in the
-filesystem semantics document. The mount adapter uses the same internal command API as SDKs.
+The server may stage large chunks before the final transaction, but staged content is invisible to
+committed readers until publish succeeds. Workspaces have leases, byte/count limits, explicit abort,
+and garbage collection after expiration. Publish rejects a missing/invalid capability, live forbidden
+descendants, nested writable workspace, expired lease, or stale expected head.
+
+`close` and `fsync` affect workspace-local handles and staging only; neither publishes. The initial
+write surface is the direct SDK/sandbox launcher. A later mount adapter uses the same internal command
+API and must expose an explicit publish/checkpoint control rather than invent a syscall boundary.
 
 ## File and tree API
 
@@ -202,7 +209,9 @@ are typed spans with normalized tool metadata.
 Run.Start(agent, objective, parent_run?, fork_commit?, environment_manifest)
 Span.Start(run, parent_span?, kind, name, input_manifest)
 Span.AppendEvent(span, sequence, kind, payload_ref)
-Workspace.Commit(span, mutations...)
+Workspace.Open(span, base_commit, process_policy)
+Workspace.Publish(request_id, expected_head)
+Workspace.Abort(reason)
 Span.Finish(status, output_manifest, usage, external_effects)
 Run.Finish(status, result_artifacts, evaluation_requests)
 ```
@@ -371,6 +380,9 @@ without treating vendor tracing IDs as durable identity.
 - Four SDKs produce identical canonical outcomes for the conformance corpus.
 - Pagination is stable while a branch head changes concurrently.
 - No ordinary API can create a commit without an author and mutation set.
+- No captured workspace can publish without a valid daemon-issued capability, bound author span,
+  expected head, and satisfied process policy.
+- `close`/`fsync` never publish; abort and pre-commit crash expose no staged logical state.
 - No ordinary client can issue a SurrealQL write to owned tables.
 - Large files and exports remain within configured memory bounds.
 - Old clients either work within negotiated capabilities or fail before mutation.

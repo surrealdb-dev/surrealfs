@@ -26,8 +26,11 @@ explicit.
 - Chunks use BLAKE3 of uncompressed bytes.
 - Artifacts use a digest of their versioned manifest and semantic metadata.
 - Retriable relation records use deterministic IDs derived from relation type and endpoint IDs.
-- Current-state record IDs derive from logical keys such as `(repository, branch, inode)`.
-- History record IDs derive from logical key plus commit sequence or commit ID.
+- Persistent state-node/root IDs derive from repository, root-format version, node kind, and
+  canonical content digest.
+- Optional materialized-head projection IDs derive from `(repository, branch, logical key)` and are
+  excluded from canonical identity.
+- Mutation/evidence record IDs derive from logical key plus commit ID.
 
 Canonical encoding must be versioned. Hash inputs never depend on JSON object ordering, local time
 formatting, or database-generated IDs.
@@ -85,6 +88,16 @@ error classification, retry-of reference, process identity, and capture level.
 Tool-call fields include tool schema/name/version, parameter digest/payload reference, result digest/
 payload reference, external side-effect declaration, and framework invocation ID.
 
+### `workspace`
+
+A bounded private state transition based on one commit. Fields include repository, branch, base
+commit/root, author principal/span, hashed capability identifier, isolation backend, process-scope
+identifier, status (`open`, `publishing`, `committed`, `aborted`, `expired`), quotas, expiry, and final
+commit/abort reason. The plaintext bearer capability is never stored.
+
+Workspace records are operational evidence, not canonical state. Only their published commit/root is
+visible through a branch. A captured tool span owns one writable workspace in the initial contract.
+
 ### `branch`
 
 | Field | Meaning |
@@ -118,7 +131,8 @@ does not alter the target commit.
 | `request_id` | Idempotency identity |
 | `mutation_count` | Ordered mutation total |
 | `mutation_root` | Digest of canonical mutations |
-| `state_root` | Digest of logical state after commit |
+| `state_root` | Immutable `state_root` record after commit |
+| `state_root_digest` | Digest of the root's canonical bytes for receipts/export |
 | `capture_level` | semantic, strict, imported, partial |
 | `created_at` | Informational timestamp |
 | `durability_mode` | Mode under which it was acknowledged |
@@ -149,7 +163,8 @@ Mutation kinds include:
 
 ### `inode`
 
-Materialized current inode at one branch head. Its logical ID is `(repository, branch, inode_id)`.
+Immutable inode value referenced from an inode-tree node. Its logical identity is stable `inode_id`;
+its record identity also includes canonical content/version identity.
 
 Fields:
 
@@ -160,36 +175,35 @@ Fields:
 - link count;
 - atime, mtime, ctime with explicit update policy;
 - device metadata where supported;
-- generation;
-- last commit;
+- introducing commit/evidence reference;
 - content/extent root digest;
 - xattr root/reference;
 - deleted/open-unlinked state where applicable.
 
 ### `inode_version`
 
-Immutable version containing the same logical inode fields plus commit, sequence, previous version,
-and branch. It exists even when current state later deletes the inode; deletion is represented by a
-tombstone version.
+Optional immutable explanation/index record connecting one logical inode mutation to a commit,
+previous value digest, and resulting immutable inode value. It accelerates blame/history queries but
+is not the lookup mechanism for committed state.
 
 ### `dentry`
 
-Materialized mapping `(repository, branch, parent_inode, normalized_name_bytes) -> child_inode`.
+Immutable namespace entry or tombstone stored under the namespace root by
+`(parent_inode, normalized_name_bytes)`.
 
 The original byte name is retained. Name normalization and case sensitivity are repository-format
 properties and cannot change in place.
 
 ### `dentry_version`
 
-Immutable mapping or tombstone at a commit. It records parent, name, child, kind hint, generation,
-previous version, and last commit.
+Optional immutable explanation/index record connecting one namespace mutation to its commit,
+previous entry digest, and resulting immutable dentry/tombstone.
 
 ### `file_extent`
 
-Materialized non-overlapping file extents ordered by file offset. Each extent is either a hole or
-references `(chunk, chunk_offset, length)`. Extent IDs include repository, branch, inode, and logical
-offset/order. Extent replacement is versioned through `file_extent_version` or a versioned immutable
-extent-map manifest, selected after benchmark comparison.
+Immutable non-overlapping file extents ordered by file offset under an extent root. Each extent is
+either a hole or references `(chunk, chunk_offset, length)`. Updating one file path-copies affected
+extent-tree nodes; unchanged nodes/chunks remain shared.
 
 ### `symlink_data`
 
@@ -198,21 +212,21 @@ handling is simpler. Symlink reads never resolve the target in storage; path tra
 
 ### `xattr`
 
-Current xattrs key by repository, branch, inode, and attribute name. Immutable versions capture set
-and deletion. Security-sensitive namespaces require explicit platform and policy handling.
+Immutable xattrs key by inode and attribute name inside the metadata tree. Tombstones capture
+deletion. Security-sensitive namespaces require explicit platform and policy handling.
 
 ## KV records
 
 ### `kv_entry`
 
-Materialized `(repository, branch, namespace, key_bytes)` value with generation, last commit, optional
-expiry, content type, and value digest.
+Immutable `(namespace, key_bytes)` value/tombstone referenced by the commit's KV root, with optional
+expiry, content type, value digest, and introducing commit evidence.
 
 ### `kv_version`
 
-Immutable value or tombstone with commit, sequence, previous version, and expiry semantics. Expiration
-is a committed system mutation when it changes visible state; wall-clock filtering alone must not
-make historical state ambiguous.
+Optional immutable explanation/index record with commit, previous value digest, resulting value,
+and expiry semantics. Expiration is a committed system mutation when it changes visible state;
+wall-clock filtering alone must not make historical state ambiguous.
 
 ## Content and artifact records
 
@@ -294,47 +308,55 @@ Rules:
 - receipts live long enough to cover all supported retry windows;
 - pinned import/sync operations may retain receipts indefinitely.
 
-## Materialized state versus history
+## Canonical state versus projections
 
-Every successful commit writes:
+Every successful commit writes atomically:
 
-1. immutable versions and tombstones;
-2. materialized current records for the new branch head;
-3. commit and mutation evidence;
-4. relations and request receipt;
-5. branch-head update.
+1. new immutable persistent-tree nodes and one `state_root`;
+2. commit and ordered mutation/evidence records;
+3. relations and request receipt;
+4. branch-head update;
+5. optional projection updates only when that projection is enabled.
 
-Materialized state is a cache with transactional guarantees. A verification/rebuild operation can
-derive it from branch ancestry and history. Production reads use it for latency.
+The root is canonical. Mutation/version records explain how it changed; they do not define lookup by
+ancestry. A materialized head is a disposable, root-keyed projection. Production may enable it only
+after benchmarks show material benefit and rebuild/verification tests pass.
 
 ## Branching model
 
-A branch initially points to `base_commit` and may have no branch-local materialized changes. Reads
-resolve branch-local current records first, then the base view. Three implementation strategies must
-be benchmarked:
+A branch is a mutable pointer to a retained commit. Creating a branch records its source commit and
+copies no logical state. Reads start from the selected commit's root; there is no branch-local/base
+fallback chain and no eager full-state materialization. Workspace overlays are transient write sets,
+not branch layers. Merge creates a new root and multi-parent commit after explicit resolution.
 
-1. eagerly materialize all current records at fork;
-2. layered lookup with base fallback;
-3. persistent immutable tree roots plus branch-local overlays.
-
-The first production choice should optimize for correctness and representative branch sizes. Layered
-lookup is the expected starting point, with background flattening once branch depth or read latency
-crosses a measured threshold.
+`generation` may accelerate validation or ancestry indexing, but equality/range comparisons on
+generation never prove ancestry. First-parent logs follow direct parent links; deeper operations may
+add verified ancestor skip indexes after measurement.
 
 ## State roots
 
-State roots provide integrity and comparison, not primary lookup. The algorithm must define:
+State roots are the primary current/historical lookup boundary and the integrity/comparison boundary.
+A `state_root` has four versioned children:
+
+- `namespace_root`: parent/name to stable inode identity;
+- `inode_root`: inode identity to immutable metadata/content-root value;
+- `extent_root`: inode/range to immutable extent/chunk references;
+- `kv_root`: namespace/key to immutable value or tombstone.
+
+The implementation may physically combine trees when measured, but logical root components and
+canonical encoding remain independently verifiable. The algorithm defines:
 
 - canonical ordering of filesystem and KV logical keys;
 - canonical encoding of metadata and content references;
 - inclusion/exclusion of volatile timestamps;
 - tombstone treatment;
-- branch/base resolution;
+- persistent-node encoding, fanout, child ordering, and path-copy rules;
 - hash algorithm and version;
-- whether filesystem and KV roots are separate children of a repository root.
+- root-format upgrade and dual-root migration rules.
 
-Incremental Merkle structures may be introduced after the vertical slice. Initial correctness may
-compute roots expensively for fixtures and asynchronously verify production commits.
+The Phase 1 proof implements a minimal content-addressed persistent tree. The root is computed before
+publish and stored in the same transaction; a commit with a pending/missing root is invalid. Full or
+sampled post-commit verification may be asynchronous, but canonical identity cannot be.
 
 ## Index plan
 
@@ -344,10 +366,8 @@ At minimum index:
 - unique branch name within repository;
 - branch head and base commit;
 - commit by branch/sequence and parent;
-- current dentry by branch/parent/name;
-- current inode by branch/inode ID;
-- extent by branch/inode/offset;
-- KV current key by branch/namespace/key;
+- state root/node by repository, format, kind, and digest;
+- optional head projection by branch, source root, and logical key;
 - history by logical key/sequence and commit;
 - span by run/parent/status/start;
 - tool call by run/name/status;
@@ -364,6 +384,7 @@ payload fields.
 Retention acts on reachability and policy:
 
 - active branch heads and named snapshots are roots;
+- immutable state nodes reachable from retained commit roots remain;
 - pinned runs/evaluations/artifacts extend reachability;
 - commits required by retained ancestry remain;
 - chunks referenced by retained extents/manifests remain;
@@ -390,4 +411,3 @@ Every migration has:
 
 Large data rewrites use shadow fields/tables and resumable backfills. A migration must not make old
 commits unverifiable without retaining the prior canonical encoding version.
-

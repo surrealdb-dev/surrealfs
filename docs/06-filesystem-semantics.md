@@ -3,7 +3,9 @@
 ## Scope
 
 SurrealFS implements the filesystem behavior required by supported agent workloads through one Rust
-semantic kernel. FUSE, NFS, direct SDK, and sandbox paths must resolve to the same rules.
+semantic kernel. The Linux direct SDK/sandbox transactional workspace is the first authoritative
+write surface. FUSE, NFS, and other mounts may be added only when they preserve the same publication
+and attribution rules; protocol parity does not imply security parity.
 
 The database stores logical filesystem state. Mount adapters handle kernel protocol details and cache
 invalidation but cannot define alternate namespace semantics.
@@ -33,6 +35,17 @@ Repository format fixes:
 
 These properties cannot change without an explicit repository conversion.
 
+## Workspace visibility and publication
+
+Every mutating operation below applies first to a private workspace view based on an immutable commit
+root. The owning tool and approved descendants observe their staged overlay; other sessions observe
+the last committed branch head. Individual syscalls, `close`, and `fsync` never advance a branch.
+
+Explicit publish waits for the defined process tree to become quiescent, applies the complete file/KV
+delta to the base root, checks `expected_head`, and atomically stores the new root, provenance,
+receipt, and branch head. Abort or failed publish discards the logical overlay. Therefore words such
+as "atomically" in the operation descriptions refer to the workspace view until publish succeeds.
+
 ## Inodes and dentries
 
 - Inodes carry object identity and metadata.
@@ -49,7 +62,8 @@ Synthetic `.` and `..` need not be stored as ordinary dentries.
 
 The daemon maintains process-scoped handles containing:
 
-- repository and branch/session;
+- repository, branch/session, and workspace;
+- verified capability/process scope;
 - inode identity and open generation;
 - access mode and flags;
 - current offset where protocol semantics require it;
@@ -61,9 +75,9 @@ The daemon maintains process-scoped handles containing:
 An unlinked open file remains accessible through existing handles. Its persistent state is retained
 until handles close or recovery policy proves no live handles remain.
 
-After daemon crash, client handles are invalid. On recovery, inodes marked open-unlinked are reclaimed
-or restored according to durable handle/session records if durable handles are ever introduced. The
-first release uses non-durable handles and documents reconnect behavior.
+After daemon crash, client handles are invalid and unpublished workspaces are aborted/reconciled, not
+published. Inodes marked open-unlinked exist only in the private overlay unless an earlier explicit
+checkpoint committed them. The first release uses non-durable handles and documents reconnect.
 
 ## Operation semantics
 
@@ -96,9 +110,10 @@ verification policy may verify every chunk, first read, sampled reads, or explic
 
 ### Write
 
-Streaming writes stage chunks before committing a new extent map. Overlapping extents are replaced
-atomically in the visible state. Append determines the write position against the transaction's
-current size and must serialize/conflict correctly with concurrent appenders.
+Streaming writes stage chunks before updating the workspace-local extent map. Overlapping extents
+are replaced atomically in that workspace view. Append determines its position against the
+workspace-visible size. Conflicts with other workspaces are detected at expected-head publication;
+no writer observes another workspace's uncommitted append.
 
 ### Truncate
 
@@ -155,9 +170,11 @@ mount would imply stronger semantics.
 
 ### `fsync`
 
-`fsync` establishes the documented durability boundary for prior writes through the handle. In
-durable-per-commit mode, writes may already be durable; `fsync` still waits for all relevant commit
-receipts and storage sync. It must not be implemented as copying database files.
+`fsync` flushes prior bytes and workspace journal/staging needed to survive the documented class of
+workspace-local failure. It does **not** publish or advance the branch. Only explicit workspace
+publish establishes the committed durability boundary and returns a `CommitReceipt`. Mount adapters
+must not translate `fsync` or `close` into an implicit semantic commit. `fsync` is never implemented
+by copying database files.
 
 ## Timestamps
 
@@ -231,15 +248,16 @@ A commit may change files and KV entries atomically.
 
 Mounts identify a branch head or immutable commit:
 
-- read-write branch mount follows commits produced by its session and observes current head;
+- a read-write workspace view is pinned to its base commit plus private overlay until publish;
 - read-only commit mount never advances;
 - snapshot mount resolves once to its target commit;
-- historical lookup uses state versions and branch ancestry;
+- current and historical lookup starts from the selected commit's immutable state root;
 - branch-head changes invalidate affected kernel caches through commit notifications.
 
 ## Merge behavior
 
-The first merge implementation is explicit and conservative:
+Merge is not required for the initial recovery/fork proof. When design-partner evidence justifies it,
+the first implementation is explicit and conservative:
 
 - find merge base from commit ancestry;
 - compare logical keys and content digests in base/source/target;
@@ -273,10 +291,9 @@ contract declares it.
 
 ## Caching
 
-Cache keys include repository, branch/commit view, logical key, and generation. Commit notifications
+Cache keys include repository, commit/root view, logical key, and root-format version. Commit notifications
 carry affected inode/dentry/KV summaries for invalidation. A cache must not serve current data for a
 historical view or data from another tenant/repository.
 
 Mount caches are treated as advisory. Correctness must survive cache eviction, duplicate requests,
 reordering allowed by the protocol, and daemon reconnect.
-
