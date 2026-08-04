@@ -129,6 +129,33 @@ DEFINE INDEX span_event_repo_domain_sequence_unique ON TABLE span_event FIELDS r
 -- Commit graph and branch state
 -- -----------------------------------------------------------------------------
 
+-- Canonical persistent state. IDs are derived from repository + format/kind + digest. The body is
+-- versioned canonical node payload; application validation ensures children belong to the same
+-- repository and their digests match. Optional branch-head projections are not defined here.
+DEFINE TABLE state_node TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD tenant ON TABLE state_node TYPE record<tenant>;
+DEFINE FIELD repository ON TABLE state_node TYPE record<repository>;
+DEFINE FIELD root_format_version ON TABLE state_node TYPE int ASSERT $value > 0;
+DEFINE FIELD kind ON TABLE state_node TYPE string
+    ASSERT $value IN ["NAMESPACE", "INODE", "EXTENT", "KV"];
+DEFINE FIELD digest ON TABLE state_node TYPE string;
+DEFINE FIELD children ON TABLE state_node TYPE array<record<state_node>>;
+DEFINE FIELD body ON TABLE state_node TYPE object FLEXIBLE;
+DEFINE FIELD created_at ON TABLE state_node TYPE datetime;
+DEFINE INDEX state_node_digest_unique ON TABLE state_node FIELDS repository, root_format_version, kind, digest UNIQUE;
+
+DEFINE TABLE state_root TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD tenant ON TABLE state_root TYPE record<tenant>;
+DEFINE FIELD repository ON TABLE state_root TYPE record<repository>;
+DEFINE FIELD root_format_version ON TABLE state_root TYPE int ASSERT $value > 0;
+DEFINE FIELD namespace_root ON TABLE state_root TYPE record<state_node>;
+DEFINE FIELD inode_root ON TABLE state_root TYPE record<state_node>;
+DEFINE FIELD extent_root ON TABLE state_root TYPE record<state_node>;
+DEFINE FIELD kv_root ON TABLE state_root TYPE record<state_node>;
+DEFINE FIELD digest ON TABLE state_root TYPE string;
+DEFINE FIELD created_at ON TABLE state_root TYPE datetime;
+DEFINE INDEX state_root_digest_unique ON TABLE state_root FIELDS repository, root_format_version, digest UNIQUE;
+
 DEFINE TABLE commit TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD tenant ON TABLE commit TYPE record<tenant>;
 DEFINE FIELD repository ON TABLE commit TYPE record<repository>;
@@ -141,7 +168,8 @@ DEFINE FIELD author_span ON TABLE commit TYPE option<record<span>>;
 DEFINE FIELD request_id ON TABLE commit TYPE string;
 DEFINE FIELD message ON TABLE commit TYPE option<string>;
 DEFINE FIELD mutation_count ON TABLE commit TYPE int ASSERT $value >= 0;
-DEFINE FIELD state_root ON TABLE commit TYPE string;
+DEFINE FIELD state_root ON TABLE commit TYPE record<state_root>;
+DEFINE FIELD state_root_digest ON TABLE commit TYPE string;
 DEFINE FIELD hash_version ON TABLE commit TYPE int ASSERT $value > 0;
 DEFINE FIELD domain_sequence ON TABLE commit TYPE int ASSERT $value >= 0;
 DEFINE FIELD committed_at ON TABLE commit TYPE datetime;
@@ -162,6 +190,29 @@ DEFINE FIELD created_at ON TABLE branch TYPE datetime;
 DEFINE FIELD updated_at ON TABLE branch TYPE datetime;
 DEFINE INDEX branch_repo_name_unique ON TABLE branch FIELDS repository, name UNIQUE;
 DEFINE INDEX branch_repo_head ON TABLE branch FIELDS repository, head;
+
+-- Workspace metadata stores only a capability hash/identifier, never the bearer capability. The
+-- private overlay itself is transient staging; only a published state root becomes canonical.
+DEFINE TABLE workspace TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD tenant ON TABLE workspace TYPE record<tenant>;
+DEFINE FIELD repository ON TABLE workspace TYPE record<repository>;
+DEFINE FIELD branch ON TABLE workspace TYPE record<branch>;
+DEFINE FIELD base_commit ON TABLE workspace TYPE record<commit>;
+DEFINE FIELD base_root ON TABLE workspace TYPE record<state_root>;
+DEFINE FIELD author_principal ON TABLE workspace TYPE record<principal>;
+DEFINE FIELD author_span ON TABLE workspace TYPE record<span>;
+DEFINE FIELD capability_hash ON TABLE workspace TYPE string;
+DEFINE FIELD process_scope_hash ON TABLE workspace TYPE string;
+DEFINE FIELD isolation_backend ON TABLE workspace TYPE string;
+DEFINE FIELD status ON TABLE workspace TYPE string
+    ASSERT $value IN ["OPEN", "PUBLISHING", "COMMITTED", "ABORTED", "EXPIRED"];
+DEFINE FIELD final_commit ON TABLE workspace TYPE option<record<commit>>;
+DEFINE FIELD abort_reason ON TABLE workspace TYPE option<string>;
+DEFINE FIELD created_at ON TABLE workspace TYPE datetime;
+DEFINE FIELD expires_at ON TABLE workspace TYPE datetime;
+DEFINE FIELD closed_at ON TABLE workspace TYPE option<datetime>;
+DEFINE INDEX workspace_capability_unique ON TABLE workspace FIELDS repository, capability_hash UNIQUE;
+DEFINE INDEX workspace_repo_status ON TABLE workspace FIELDS repository, status, expires_at;
 
 DEFINE TABLE snapshot TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD tenant ON TABLE snapshot TYPE record<tenant>;
@@ -198,6 +249,8 @@ DEFINE FIELD command_hash ON TABLE request_receipt TYPE string;
 DEFINE FIELD outcome ON TABLE request_receipt TYPE string
     ASSERT $value IN ["APPLIED", "REPLAYED", "CONFLICT", "REJECTED"];
 DEFINE FIELD commit ON TABLE request_receipt TYPE option<record<commit>>;
+DEFINE FIELD state_root ON TABLE request_receipt TYPE option<record<state_root>>;
+DEFINE FIELD state_root_digest ON TABLE request_receipt TYPE option<string>;
 DEFINE FIELD previous_head ON TABLE request_receipt TYPE option<record<commit>>;
 DEFINE FIELD new_head ON TABLE request_receipt TYPE option<record<commit>>;
 DEFINE FIELD domain_sequence ON TABLE request_receipt TYPE option<int>;
@@ -208,9 +261,9 @@ DEFINE INDEX receipt_repo_request_unique ON TABLE request_receipt FIELDS reposit
 -- -----------------------------------------------------------------------------
 -- Filesystem and KV state
 --
--- These records describe immutable versions introduced by commits. Hot reads may use additional
--- materialized-head tables added by a later measured migration. Historical identity is never
--- overwritten merely to optimize head reads.
+-- These records are immutable values/evidence introduced by commits and referenced by persistent
+-- state nodes. Hot reads may use additional root-keyed materialized-head tables added by a later
+-- measured migration. Such projections are disposable and never define historical/current identity.
 -- -----------------------------------------------------------------------------
 
 DEFINE TABLE inode TYPE NORMAL SCHEMAFULL PERMISSIONS NONE;
@@ -365,6 +418,21 @@ DEFINE FIELD repository ON TABLE caused TYPE record<repository>;
 DEFINE FIELD capture_quality ON TABLE caused TYPE string
     ASSERT $value IN ["CAPTURED", "IMPORTED", "INFERRED"];
 DEFINE INDEX caused_edge_unique ON TABLE caused FIELDS repository, in, out UNIQUE;
+
+DEFINE TABLE owns_workspace TYPE RELATION FROM span | tool_call TO workspace SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD tenant ON TABLE owns_workspace TYPE record<tenant>;
+DEFINE FIELD repository ON TABLE owns_workspace TYPE record<repository>;
+DEFINE INDEX owns_workspace_unique ON TABLE owns_workspace FIELDS repository, in, out UNIQUE;
+
+DEFINE TABLE based_on TYPE RELATION FROM workspace TO commit SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD tenant ON TABLE based_on TYPE record<tenant>;
+DEFINE FIELD repository ON TABLE based_on TYPE record<repository>;
+DEFINE INDEX workspace_base_unique ON TABLE based_on FIELDS repository, in, out UNIQUE;
+
+DEFINE TABLE published_as TYPE RELATION FROM workspace TO commit SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD tenant ON TABLE published_as TYPE record<tenant>;
+DEFINE FIELD repository ON TABLE published_as TYPE record<repository>;
+DEFINE INDEX workspace_publish_unique ON TABLE published_as FIELDS repository, in UNIQUE;
 
 DEFINE TABLE produced TYPE RELATION FROM commit | span | tool_call TO artifact SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD tenant ON TABLE produced TYPE record<tenant>;

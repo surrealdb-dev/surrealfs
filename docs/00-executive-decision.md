@@ -1,23 +1,17 @@
-# Executive decision: fund the proof, not the full rewrite
+# Executive decision: build the bounded proof on SurrealDB + SurrealKV
 
 ## Decision
 
-Fund a tightly bounded proof of the SurrealFS causal-workspace contract. Use embedded SurrealDB
-backed by SurrealKV as the **preferred proof implementation**, not as a production conclusion.
-The same minimal `CausalCommitStore` protocol must also be exercised against a SQLite/AgentFS
-baseline during Phase 0. Production selection follows correctness, lifecycle, complexity, workload,
-and product evidence.
+Build SurrealFS from scratch on embedded SurrealDB backed by SurrealKV as its one canonical
+persistence layer. Do not implement SQLite, AgentFS, raw SurrealKV, RocksDB, or another adapter as an
+alternative. Phase 0 proves whether the SurrealFS contract is viable on this fixed architecture; a
+failure produces `NARROW` or `STOP`, not an engine-selection project.
 
-If SurrealDB + SurrealKV passes those gates, it becomes the one canonical persistence layer for the
-first production architecture. The first production version will not offer raw SurrealKV as a
-separate storage mode. If it fails while the product semantics validate, replace the adapter rather
-than weakening the product contract.
-
-The preference is driven by product fit rather than an assertion that this combination is
-universally the fastest or safest embedded datastore. Agent execution naturally produces a graph of
+The decision is driven by product fit rather than an assertion that this combination is universally
+the fastest embedded datastore. Agent execution naturally produces a graph of
 runs, actions, state transitions, artifacts, branches, policies, and evaluations. SurrealDB may make
 that graph queryable without building a second index or a custom graph engine. SurrealKV supplies the
-candidate local embedded storage layer. Phase 0 must prove that this convenience survives the
+local embedded storage layer. Phase 0 must prove that this convenience survives the
 required durability and hot-path workload.
 
 ## Why the earlier two-store design is no longer preferred
@@ -48,8 +42,8 @@ also require SurrealFS to implement or maintain:
 - permissions around introspection;
 - migration behavior for all of the above.
 
-Those tasks delay the differentiated workflows. A raw engine remains a contingency if benchmarks
-prove the SurrealDB layer unsuitable, not a parallel promise that must be supported from day one.
+Those tasks delay the differentiated workflows. Raw SurrealKV is not an implementation contingency
+for this plan. If the chosen stack is unsuitable, the project stops or narrows.
 
 ## Evidence from the selected private SurrealDB checkout
 
@@ -92,8 +86,8 @@ Permissioned aggregate data is optional upside, not the initial investment thesi
 
 Proceed beyond the proof only after it establishes all of the following:
 
-1. The same bounded causal-commit protocol is implemented and tested on the SurrealDB/SurrealKV
-   candidate and the SQLite/AgentFS baseline with normalized durability.
+1. The bounded causal-commit protocol matches the pure reference model on SurrealDB/SurrealKV and
+   passes deterministic fault/reopen tests on the pinned stack.
 2. A commit references an immutable filesystem/KV state root; branch creation from a retained commit
    does not copy the complete state; any materialized head is disposable and rebuildable.
 3. One transaction atomically creates immutable state, commit evidence, graph edges, retry receipt,
@@ -107,12 +101,10 @@ Proceed beyond the proof only after it establishes all of the following:
 8. A real failed-run recovery/fork/compare trial shows repeated user value before broad POSIX work.
 9. SurrealDB licensing and the private-source dependency are acceptable for the intended product.
 
-## Conditions for revisiting the engine choice
+## Conditions for stopping or narrowing
 
-Choose or revisit SurrealDB-over-SurrealKV from the Phase 0 comparison. Prefer the SQLite/AgentFS
-path if it provides equivalent semantics with lower lifecycle, durability, or implementation risk.
-Prefer SurrealDB/SurrealKV only if it passes every correctness gate and materially reduces domain
-indexing/query complexity or enables the target workflows. Re-open the choice if query execution
-dominates filesystem cost, upgrades are operationally unsafe, SurrealKV durability fails the fault
-model, or graph-powered workflows are not central to usage. Preserve the domain protocol and
-application-level history so an engine change never requires redefining the product.
+Stop or narrow SurrealFS if query execution structurally misses the product budget, upgrades are
+operationally unsafe, SurrealKV fails the durability model, licensing blocks the intended product,
+or graph-powered recovery workflows are not repeatedly valuable. Do not respond inside this plan by
+adding another storage engine or extending AgentFS. Preserve logical exports for user portability,
+not as a commitment to build a backend matrix.

@@ -12,6 +12,7 @@ SELECT
     kind,
     committed_at,
     state_root,
+    state_root_digest,
     <-caused[WHERE tenant = $tenant AND repository = $repository]<-(span, tool_call) AS direct_causes,
     ->produced[WHERE tenant = $tenant AND repository = $repository]->artifact AS artifacts,
     <-governed[WHERE tenant = $tenant AND repository = $repository]<-policy_decision AS policy_decisions
@@ -34,13 +35,15 @@ WHERE tenant = $tenant AND repository = $repository;
 -- Q3: Resolve commits authored by tool calls in one run.
 -- This two-step form is intentionally straightforward; inspect EXPLAIN before selecting the final
 -- production query/index shape.
-LET $tool_spans = SELECT VALUE id FROM span
-    WHERE tenant = $tenant
-      AND repository = $repository
-      AND run = $run
-      AND kind = "TOOL_CALL"
-    ORDER BY started_at ASC
-    LIMIT $span_limit;
+LET $tool_spans = SELECT VALUE id FROM (
+    SELECT id, started_at FROM span
+        WHERE tenant = $tenant
+          AND repository = $repository
+          AND run = $run
+          AND kind = "TOOL_CALL"
+        ORDER BY started_at ASC, id ASC
+        LIMIT $span_limit
+);
 
 SELECT
     id,
@@ -50,9 +53,10 @@ SELECT
 FROM $tool_spans
 WHERE tenant = $tenant AND repository = $repository;
 
--- Q4: First-parent commit log from a branch head.
--- SurrealFS may replace this traversal with a generation/ancestor index for bounded latency at
--- deep history. The product API always supplies $limit and returns a continuation cursor.
+-- Q4: One correct first-parent log step.
+-- Bind $cursor to the branch head for the first call, then to `next_cursor` for each subsequent
+-- call until NONE or the product-level limit is reached. Generation is returned as metadata only;
+-- filtering a repository by generation is not ancestry and can leak sibling-branch commits.
 SELECT
     id,
     kind,
@@ -60,14 +64,12 @@ SELECT
     committed_at,
     message,
     state_root,
-    author_span
-FROM commit
+    state_root_digest,
+    author_span,
+    first_parent AS next_cursor
+FROM ONLY $cursor
 WHERE tenant = $tenant
-  AND repository = $repository
-  AND generation <= $head_generation
-  AND generation >= $minimum_generation
-ORDER BY generation DESC
-LIMIT $limit;
+  AND repository = $repository;
 
 -- Q5: Compare evaluations for candidate runs.
 SELECT

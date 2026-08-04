@@ -1,6 +1,6 @@
-# ADR 0001: SurrealDB + SurrealKV is the preferred canonical-store candidate
+# ADR 0001: SurrealDB + SurrealKV is the canonical store
 
-- Status: proposed, conditional on Phase 0 gates
+- Status: accepted
 - Date: 2026-08-04
 - Revalidated: 2026-08-04 against private revision `e68539867`, SurrealKV `0.21.3`
 
@@ -17,15 +17,10 @@ migration/query machinery that is not user-visible differentiation.
 
 ## Decision
 
-Use embedded SurrealDB with SurrealKV as the preferred implementation for the bounded proof. Only
+Build SurrealFS from scratch using embedded SurrealDB with SurrealKV as one canonical store. Only
 `surrealfsd` opens it. All mutations pass through the SurrealFS semantic kernel in one database
-transaction. Use an engine-independent domain storage trait and logical export.
-
-Before accepting this ADR for production, implement the same small causal-commit conformance
-scenario against a SQLite/AgentFS baseline with equivalent durability. This is an evaluation spike,
-not a commitment to maintain two production adapters. If SurrealDB/SurrealKV passes, support it as
-the single initial production adapter. If it fails while the domain semantics validate, select the
-baseline or another adapter without changing commit identity, state roots, RPC, or export semantics.
+transaction. Maintain a database-independent domain model and logical export for testability and
+user portability, not to promise alternate engines.
 
 ## Consequences
 
@@ -48,12 +43,11 @@ Negative:
 
 ## Validation
 
-The decision is accepted only after the parity spike plus transaction concurrency, crash/reopen,
-backup/restore, logical export, performance, compaction, security, and license gates in docs 08 and
-12 pass. Correctness is pass/fail and precedes performance. The decision report must include adapter
-code/complexity, query plans, disk amplification, lifecycle behavior, and the recovery workflow—not
-only microbenchmarks. If product semantics validate but the engine fails, replace the adapter without
-changing the protocol/domain contract.
+Production work proceeds only after transaction concurrency, crash/reopen, backup/restore, logical
+export, performance, compaction, security, and license gates in docs 08 and 12 pass. Correctness is
+pass/fail and precedes performance. The evidence report includes schema/query complexity, query
+plans, disk amplification, lifecycle behavior, and the recovery workflow—not only microbenchmarks.
+If the fixed stack fails a critical gate, stop or narrow the product.
 
 The current revalidation found that public SDK transactions, session isolation, live queries, and
 logical export/import have targeted passing tests. It also found no supported public awaited
@@ -65,6 +59,4 @@ reasons to use internal engine/KVS crates. See [the current source audit](../15-
 - SurrealKV-only public mode: duplicate engineering and test matrix without a moat benefit.
 - RocksDB + SurrealDB projection: unnecessary two-store consistency cost for the chosen local
   architecture.
-- SQLite as a second production mode: two permanent backends would expand the compatibility matrix
-  before product value is proven. SQLite/AgentFS remains the mandatory Phase 0 evaluation baseline
-  and a valid production fallback if it wins.
+- SQLite or AgentFS adapter/extension: SurrealFS is a from-scratch implementation on the chosen stack.

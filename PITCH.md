@@ -20,10 +20,11 @@ The product promise is that a team can answer four expensive questions with evid
 3. **Fork:** Can we retry from the exact pre-action state without copying the whole workspace?
 4. **Prove:** Can we verify which principal, input, tool, policy, and model governed the transition?
 
-The preferred proof architecture is one embedded SurrealDB instance backed by SurrealKV, owned by
+The chosen architecture is one embedded SurrealDB instance backed by SurrealKV, owned by
 one local daemon. Filesystem state, agent KV, execution records, graph relations, immutable roots,
-idempotency receipts, and branch heads move in one semantic transaction. Phase 0 compares the same
-thin domain protocol with SQLite/AgentFS before the production adapter is selected.
+idempotency receipts, and branch heads move in one semantic transaction. Phase 0 validates that
+stack against a backend-neutral reference model, crash/invariant gates, and representative product
+workloads. SurrealFS is implemented from scratch; no second adapter or AgentFS extension is planned.
 
 The investment recommendation is deliberately narrower than “match every AgentFS and TigerFS
 feature before launch”:
@@ -328,8 +329,8 @@ Commit a small senior team to produce:
 3. propagation of scoped action identity into a real subprocess tree, with explicit detection of
    unknown or bypassed writes;
 4. deterministic before/after-commit kill tests plus reopen verification;
-5. the same thin domain protocol measured on SQLite/Turso and SurrealDB/SurrealKV so engine choice is
-   evidence rather than positioning;
+5. the SurrealDB/SurrealKV implementation measured against a pure reference model and representative
+   workloads, with AgentFS used only as a competitor benchmark where operations are comparable;
 6. a realistic filesystem, branch, causal-query, and recovery benchmark against AgentFS and agreed
    Git/trace/snapshot baselines;
 7. an engine-independent logical export/restore whose receipts and state roots verify independently;
@@ -337,9 +338,8 @@ Commit a small senior team to produce:
 9. a legal decision on the pinned SurrealDB distribution model;
 10. discovery evidence from 5–10 design partners, with at least three willing to test the prototype.
 
-The Phase 0 decision report must also compare building the primitive as an AgentFS extension with
-shipping a separate SurrealFS stack. Existing mounts, SDKs, migration cost, and distribution are part
-of the comparison, not sunk costs that the database benchmark may ignore.
+The Phase 0 report records the practical distribution gap versus AgentFS, but implementation remains
+a new SurrealFS stack. It does not evaluate or fund an AgentFS extension.
 
 ### Approve next only if Phase 0 passes
 
@@ -408,10 +408,11 @@ link.
 
 ### Why not SQLite?
 
-SQLite is a mature and credible performance/reliability baseline. It could implement this design,
-but SurrealFS would own more relational mapping and graph traversal machinery. The decision is not
-that SQLite is bad; it is that SurrealDB may let the team reach the differentiated workflows sooner.
-Benchmark it during Phase 0 and change adapters if that thesis is wrong.
+SQLite is a mature database and useful context for understanding AgentFS, but it is not a SurrealFS
+implementation option. SurrealFS is intentionally built from scratch on embedded SurrealDB over
+SurrealKV so state, immutable roots, provenance relations, and product queries share one canonical
+store. If that fixed stack cannot satisfy the contract, the project stops or narrows rather than
+quietly becoming a different storage project.
 
 ### Is SurrealDB the lock-in?
 

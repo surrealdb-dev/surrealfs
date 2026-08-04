@@ -3,10 +3,11 @@
 ## Architectural objective
 
 SurrealFS must make one Rust implementation authoritative for transactional-workspace, filesystem,
-KV, immutable-root, history, causality, and publication semantics. The preferred proof adapter uses
+KV, immutable-root, history, causality, and publication semantics. The canonical adapter uses
 SurrealDB for records, graph queries, indexes, and transactions over SurrealKV. Other languages and
 mount protocols are clients or adapters; they are not alternate implementations of the state
-machine. The domain contract remains testable against the Phase 0 SQLite/AgentFS baseline.
+machine. The domain contract remains testable against a pure reference model. No second storage
+adapter or AgentFS extension is part of the implementation plan.
 
 ## Context
 

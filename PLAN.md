@@ -2,9 +2,9 @@
 
 ## Objective
 
-Build SurrealFS as a causal execution substrate for agents. Use embedded SurrealDB over SurrealKV as
-the preferred proof store, while testing the same minimal causal-commit contract against
-SQLite/AgentFS before production selection. The initial product must make agent state inspectable,
+Build SurrealFS from scratch as a causal execution substrate for agents, using embedded SurrealDB
+over SurrealKV as the canonical store. Test it against a backend-neutral reference model, hard
+crash/invariant gates, and representative workloads. The initial product must make agent state inspectable,
 forkable, attributable, and recoverable without maintaining multiple production engines or
 duplicating filesystem semantics in every language SDK.
 
@@ -22,8 +22,8 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
 
 ## Fixed decisions
 
-1. **Preferred candidate, not conclusion:** embedded SurrealDB backed by SurrealKV must win the
-   Phase 0 parity spike and production gates.
+1. **Canonical engine:** embedded SurrealDB backed by SurrealKV; no SQLite, AgentFS, raw SurrealKV,
+   or other production adapter is planned.
 2. **One production format:** no SurrealKV-only production adapter in the first release.
 3. **One writer:** the Rust daemon owns the database directory and all state transitions.
 4. **One semantic kernel:** language SDKs call the daemon; they do not reimplement filesystem rules.
@@ -86,21 +86,23 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
 
 ## Phase sequence
 
-### Phase 0 — decision closure and dual-store spike
+### Phase 0 — design closure and SurrealDB/SurrealKV proof
 
 Deliver:
 
 - accepted immutable-root and transactional-workspace decisions;
 - draft schema and IDs;
-- the same small causal-commit protocol on SQLite/AgentFS and SurrealDB/SurrealKV;
-- crash/reopen, ancestry, export, lifecycle, complexity, and workload comparison;
+- the causal-commit protocol on SurrealDB/SurrealKV plus a pure reference model;
+- crash/reopen, ancestry, export, lifecycle, complexity, and workload evidence;
+- representative workload measurements and competitor context with semantic differences labeled;
 - a representative imported AgentFS database;
 - product-query fixtures;
 - 5–10 discovery interviews and at least three prototype candidates;
 - agreed performance and correctness budgets.
 
-Exit with an explicit engine/build-vs-extend decision. Correctness failures disqualify an adapter;
-performance does not compensate for partial atomicity, missing roots, or false attribution.
+Exit with `GO`, `NARROW`, or `STOP` for SurrealFS on the fixed architecture. There is no engine or
+build-vs-extend decision. Performance does not compensate for partial atomicity, missing roots, or
+false attribution.
 
 ### Phase 1 — Linux causal-workspace vertical slice
 
@@ -262,8 +264,8 @@ Stop or change direction if any of the following remains true after focused opti
 - branch and history storage grows without an acceptable retention and compaction strategy.
 - users do not repeatedly choose the recovery/fork workflow over Git, copy, worktree, or sandbox
   snapshots after a real trial;
-- the SQLite/AgentFS baseline provides equivalent semantics with materially lower risk and the
-  SurrealDB/SurrealKV preference cannot justify its added dependency cost.
+- SurrealDB/SurrealKV cannot satisfy the required correctness, lifecycle, licensing, or workload
+  contract within the agreed investment; stop or narrow rather than adding another adapter.
 
-If a kill criterion is hit, preserve the domain model, logical export, and semantic kernel. Those are
-more valuable and portable than the selected engine.
+If a kill criterion is hit, preserve the domain model, logical export, and semantic kernel. Those
+remain useful for a narrowed product and for users recovering their data from the stopped project.

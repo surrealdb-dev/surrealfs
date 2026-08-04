@@ -6,7 +6,7 @@ The public API must expose SurrealFS concepts rather than SurrealDB tables. Clie
 open spans, mutate repository state, fork commits, query provenance, and export data. They do not
 need to know whether the store uses documents, relation tables, or key ranges.
 
-This boundary is the product's compatibility layer and the escape hatch from the selected engine.
+This boundary is the product's compatibility layer and keeps storage-specific behavior out of SDKs.
 
 ## Process boundary
 
@@ -386,4 +386,4 @@ without treating vendor tracing IDs as durable identity.
 - No ordinary client can issue a SurrealQL write to owned tables.
 - Large files and exports remain within configured memory bounds.
 - Old clients either work within negotiated capabilities or fail before mutation.
-- An alternative storage adapter can pass the protocol suite without changing SDKs.
+- No SDK/protocol type exposes SurrealDB or SurrealKV physical values.

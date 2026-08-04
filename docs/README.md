@@ -10,7 +10,7 @@ For product, engineering, and leadership discussion:
 
 1. [Team pitch](../PITCH.md) — problem, product, moat, design, evidence, and the investment ask.
 2. [Executive decision](00-executive-decision.md) — the exact recommendation and go/no-go gates.
-3. [Roadmap: Phase 0](13-roadmap.md#phase-0--decision-closure-and-dual-store-spike) — what the first funded proof delivers.
+3. [Roadmap: Phase 0](13-roadmap.md#phase-0--design-closure-and-surrealdbsurrealkv-proof) — what the first funded proof delivers.
 4. [Highest-priority risks](14-risk-register.md#highest-priority-risks-before-writing-production-code)
    — what can invalidate the proposal.
 
@@ -31,7 +31,7 @@ For the engineers building the vertical slice, read in this order:
    action attribution, reconciliation, compensation, and explicit recovery boundaries.
 7. [Execution graph](07-execution-graph.md) — how actions, commits, artifacts, policies, and
    evaluations connect.
-8. [SurrealDB + SurrealKV contract](08-surrealdb-surrealkv.md) — candidate adapter boundary and engine gates.
+8. [SurrealDB + SurrealKV contract](08-surrealdb-surrealkv.md) — canonical adapter boundary and stack gates.
 9. [API and SDK design](09-api-and-sdk.md) — commands, queries, transactions, subscriptions, and
    errors.
 10. [Testing and benchmarks](12-testing-and-benchmarks.md) — executable proof of the above.

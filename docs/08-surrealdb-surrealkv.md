@@ -1,11 +1,10 @@
-# SurrealDB + SurrealKV Candidate Operating Contract
+# SurrealDB + SurrealKV Operating Contract
 
 ## Decision
 
-SurrealFS will first prove SurrealDB embedded in `surrealfsd`, with SurrealKV underneath, as its
-preferred canonical-store candidate. It becomes the only persistent engine in the first production
-architecture only if it passes the Phase 0 parity spike and all gates below. This document specifies
-the candidate's operating contract; it is not evidence that the contract has passed.
+SurrealFS runs SurrealDB embedded in `surrealfsd`, with SurrealKV underneath, as its only canonical
+persistent architecture. This document specifies the fixed stack's operating contract. The gates
+below decide `GO`, `NARROW`, or `STOP` for SurrealFS; they do not select another backend.
 
 ```text
 SurrealFS domain commands
@@ -20,7 +19,7 @@ embedded SurrealDB query/transaction engine
 SurrealKV files owned exclusively by surrealfsd
 ```
 
-Within this candidate, this is one database, not two databases. SurrealDB provides records, relations, indexes,
+This is one database, not two databases. SurrealDB provides records, relations, indexes,
 transactions, and queries. SurrealKV is the key-value persistence layer under that database. A
 SurrealFS commit is a domain transaction in SurrealDB; there is no application-level replication
 between a graph store and a key-value store.
@@ -80,34 +79,23 @@ pub trait RepositoryStore {
 }
 ```
 
-An in-memory implementation may back tests. A future engine is accepted only if it implements the
-same invariants and passes the same conformance and crash suites.
+An in-memory reference model may back domain tests. It is not a production adapter.
 
-## Mandatory Phase 0 parity spike
+## Mandatory Phase 0 stack proof
 
-The engine decision uses one deliberately small domain scenario implemented twice:
+The proof uses one deliberately small domain scenario:
 
 ```text
 open at expected head -> stage file/KV/artifact delta -> publish immutable root + span + receipt
 -> reopen -> historical read -> first-parent log -> fork -> diff -> explain
 ```
 
-Implement it on:
-
-1. embedded SurrealDB over SurrealKV with `sync=every` for durable acknowledgement;
-2. SQLite/AgentFS or a clean SQLite adapter using WAL and `synchronous=FULL` for comparable durable
-   acknowledgement.
-
-Both implementations use identical canonical IDs, mutations, roots, fixtures, fault outcomes,
-logical export, and user-level queries. Correctness is pass/fail. After correctness, compare adapter
-and migration complexity, lines/components owned, p50/p99 latency, CPU/memory, disk/write
-amplification, reopen/lock release, export/restore, ancestry/causal-query plans, and implementation
-time. Publish raw configuration and results.
-
-The spike also compares extending AgentFS with semantic commits against establishing a separate
-SurrealFS stack. It does not create a promise to maintain two production backends. Select
-SurrealDB/SurrealKV only when it passes every invariant and materially reduces domain/index/query
-complexity or accelerates the validated recovery workflow.
+Implement it on embedded SurrealDB over SurrealKV with `sync=every` for durable acknowledgement and
+compare every logical outcome with the pure reference model. Correctness is pass/fail. After
+correctness, measure schema/query complexity, p50/p99 latency, CPU/memory, disk/write amplification,
+reopen/lock release, export/restore, ancestry/causal-query plans, and implementation time. Publish raw
+configuration and results. AgentFS may provide competitor workload context only; no parity adapter or
+extension is built.
 
 ## Dependency boundary
 
@@ -378,9 +366,9 @@ baseline but also establish concrete regression cases for the SurrealFS crash ca
 
 ## Production validation gates
 
-SurrealDB + SurrealKV remains a conditional choice until all of these gates pass:
+SurrealDB + SurrealKV is fixed, but SurrealFS is not production-ready until all of these gates pass:
 
-- mandatory parity spike and build-vs-extend report completed without durability mismatch;
+- mandatory reference-model and pinned-stack proof completed without durability mismatch;
 - immutable-root, workspace-isolation, attribution, ancestry, and idempotency conformance passed;
 - 72-hour write/read/reopen soak with no invariant violation;
 - deterministic process-kill fault injection at every commit boundary;
@@ -395,9 +383,8 @@ SurrealDB + SurrealKV remains a conditional choice until all of these gates pass
 - schema migrations are forward-safe and rollback is demonstrated;
 - independent license review approves the intended distribution and hosted model.
 
-If these gates fail, the fallback is not an exposed SurrealKV mode. The fallback is to preserve the
-SurrealFS domain, RPC, export, and conformance contracts and replace the storage adapter. This is
-why the semantic boundary matters.
+If a critical gate fails, stop or narrow SurrealFS. Do not add an exposed SurrealKV mode, SQLite,
+AgentFS, RocksDB, or another adapter inside this plan.
 
 ## Licensing and commercial constraints
 
@@ -410,23 +397,20 @@ construed as a managed database service. Website summaries are not legal advice.
 License approval is a Phase 0 exit gate. If the intended commercial model needs a SurrealDB
 agreement, that cost and dependency must enter the business case before implementation grows.
 
-## Decision triggers
+## Stop or narrow triggers
 
-Re-open the storage decision if any of the following occurs:
+Stop or narrow the product if any of the following occurs:
 
 - SurrealKV remains beta when SurrealFS needs a stable production SLA;
 - crash or compaction testing reveals integrity or tail-latency failures;
 - embedded backup/restore cannot meet the operational contract;
 - the supported SDK cannot provide an acceptable shutdown/reopen lifecycle;
 - SurrealDB licensing prevents the intended distribution or economics;
-- the SQLite/AgentFS baseline provides equivalent semantics with materially lower lifecycle,
-  implementation, or reliability risk;
 - query overhead makes filesystem metadata operations miss target latency by more than the allowed
   budget after profiling and schema optimization;
 - engine API churn consumes more than ten percent of quarterly engineering capacity;
 - a second process must safely write the same local database directory;
 - the product moves from local/single-node operation to horizontally distributed writes.
 
-The criterion is not whether another database wins a generic benchmark. It is whether this stack
-can uphold SurrealFS's domain contract at an acceptable reliability and engineering cost while
-materially simplifying the validated product workflow.
+The criterion is whether this fixed stack can uphold SurrealFS's domain contract at an acceptable
+reliability and engineering cost while enabling the validated product workflow.

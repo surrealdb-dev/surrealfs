@@ -2,8 +2,7 @@
 
 SurrealFS is a proposed causal execution workspace for AI agents. It combines versioned filesystem
 and agent key-value state with tool provenance, artifacts, evaluations, policy decisions, snapshots,
-and forks. The preferred proof implementation is embedded SurrealDB backed by SurrealKV; production
-use of that engine remains conditional on Phase 0 evidence.
+and forks in one canonical embedded SurrealDB database backed by SurrealKV.
 
 The working thesis is simple:
 
@@ -27,7 +26,7 @@ Choose one path; you do not need to read every Markdown file:
 The [complete documentation guide](docs/README.md) explains how the design fits together and lists
 all reference documents by purpose.
 
-## Preferred proof architecture
+## Chosen architecture
 
 ```mermaid
 flowchart TB
@@ -39,11 +38,11 @@ flowchart TB
     K -. "portable logical export" .-> X["Engine-independent archive"]
 ```
 
-Within the preferred adapter, SurrealDB and SurrealKV form one canonical local store. SurrealDB is
+SurrealDB and SurrealKV form one canonical local store. SurrealDB is
 not a secondary projection, and SurrealKV is not exposed as a second persistence format. Filesystem
 state, KV state, execution records, graph edges, and branch heads are committed through the same
-semantic kernel. Phase 0 exercises the same thin causal-commit protocol against SQLite/AgentFS so
-this choice is evidence-driven rather than assumed.
+semantic kernel. Phase 0 validates this fixed stack against a backend-neutral reference model, hard
+crash/invariant gates, and representative workloads. There is no second storage adapter.
 
 ## What is and is not the moat
 
@@ -84,7 +83,7 @@ The implementation is deliberately gated:
 2. Prove that real users repeatedly rely on a causal recovery or fork/evaluation workflow.
 3. Expand filesystem compatibility and graph depth only after those two proofs.
 
-Stop, narrow, or replace the storage adapter if either proof fails. The detailed decision gates are
+Stop or narrow the product if either proof fails. The detailed decision gates are
 in the [executive decision](docs/00-executive-decision.md), [roadmap](docs/13-roadmap.md), and
 [risk register](docs/14-risk-register.md).
 
@@ -142,7 +141,7 @@ This is dependency evidence, not SurrealFS production evidence.
 
 The draft core schema was previously parsed and applied successfully to an in-memory instance; the
 product query file parses, but no production implementation or semantic query fixture exists yet.
-The next executable milestones are the dual-store conformance spike in Phase 0 and the Linux causal
+The next executable milestones are the SurrealDB/SurrealKV proof in Phase 0 and the Linux causal
 workspace vertical slice in [Phase 1 of the roadmap](docs/13-roadmap.md): one private tool workspace,
 filesystem and KV mutations, one immutable-root commit, enforced attribution, reopen recovery, fork,
 and causal explanation.

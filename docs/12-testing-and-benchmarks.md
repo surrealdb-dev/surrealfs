@@ -281,9 +281,9 @@ Checkout base, read 200 files, write range/replace 5-30 files, create/delete pat
 keys, commit from one tool span, diff, then fork. Measures commit latency, chunk reuse, diff latency,
 and bytes written.
 
-The Phase 0 parity form is fixed and smaller: five file mutations including rename/delete, 20 KV
+The Phase 0 proof form is fixed and smaller: five file mutations including rename/delete, 20 KV
 updates, one artifact/span, publish, reopen, historical read, first-parent pagination, fork, diff, and
-explain. Both store candidates execute the identical canonical fixture and durability contract.
+explain. The SurrealDB/SurrealKV result must match the pure reference model and durability contract.
 
 ### Artifact-heavy run
 
@@ -307,26 +307,24 @@ Measures history growth, write/read amplification, maintenance interference, and
 
 ## Comparative baselines
 
-Phase 0 must compare:
+Phase 0 measures:
 
-1. SQLite/AgentFS implementation of the exact small `CausalCommitStore` protocol;
-2. embedded SurrealDB + SurrealKV implementation of that exact protocol;
-3. SurrealFS domain reference/in-memory overhead floor;
-4. raw SurrealDB queries used by the candidate adapter to isolate semantic-layer overhead.
+1. the SurrealFS pure reference/in-memory model as a semantic and overhead floor;
+2. the canonical embedded SurrealDB + SurrealKV implementation;
+3. raw SurrealDB queries used by the adapter to isolate semantic-layer overhead;
+4. the existing AgentFS product only where an end-to-end workload is genuinely comparable.
 
-The SQLite/AgentFS implementation is mandatory before the engine decision, not a fallback built only
-after a trigger. It remains a bounded evaluation spike unless selected; the project does not promise
-two production adapters. The report separately evaluates whether extending AgentFS's existing SDK/
-mount distribution is preferable to a new SurrealFS stack.
+No SQLite/AgentFS adapter or AgentFS extension is implemented. AgentFS results are competitor context,
+not an engine-selection benchmark; capability and durability differences are labeled explicitly.
 
 The comparison must normalize durability. An asynchronous/non-fsync baseline cannot be presented
 as faster than a durable commit without labeling the mismatch. Feature differences such as graph
 capture and immutable history are reported separately from throughput.
 
-Correctness is pass/fail before performance ranking. A candidate that loses acknowledged state,
+Correctness is pass/fail before performance analysis. If the fixed stack loses acknowledged state,
 partially publishes, misattributes a write, reconstructs a different root, or returns sibling-branch
-commits cannot win on latency. After correctness, compare owned code/complexity, migration/query
-surface, lifecycle, and operator burden alongside performance.
+commits, SurrealFS stops or narrows; latency cannot compensate. After correctness, report owned
+code/complexity, migration/query surface, lifecycle, and operator burden alongside performance.
 
 ## Metrics
 
@@ -366,7 +364,7 @@ relative gates prevent vague success:
 - compaction/GC cannot stall commits beyond the approved p99.9 budget;
 - SurrealDB upgrade passes old/new logical equality and a production-sized canary soak;
 - no critical/high unresolved security finding for the deployment model.
-- Phase 0 engine report contains parity evidence rather than architecture preference.
+- Phase 0 stack report contains reference-model, crash, lifecycle, query-plan, and workload evidence.
 - Phase 2 design-partner trial demonstrates repeated recovery use and a material outcome improvement
   before broad filesystem compatibility work begins.
 

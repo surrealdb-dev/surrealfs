@@ -28,13 +28,13 @@ team can execute the same sequence with a longer calendar.
 - Preserve logical export from the first durable prototype.
 - Treat schema and query changes like API changes.
 
-## Phase 0 — decision closure and dual-store spike
+## Phase 0 — design closure and SurrealDB/SurrealKV proof
 
 ### Goal
 
-Close the foundational semantics, test the exact same minimal causal-commit protocol on
-SurrealDB/SurrealKV and SQLite/AgentFS, and decide whether the product and preferred engine merit the
-Linux workspace proof. This is not two production adapters.
+Close the foundational semantics and prove the minimal causal-commit protocol on the fixed embedded
+SurrealDB/SurrealKV architecture against a pure reference model. Decide only `GO`, `NARROW`, or
+`STOP` for the Linux workspace proof. No second adapter or AgentFS extension is in scope.
 
 ### Scope
 
@@ -45,7 +45,7 @@ Linux workspace proof. This is not two production adapters.
 | Workspace/attribution threat model | M | Linux overlay, capability, cgroup, quiescence, and bypass contract |
 | License/commercial review | S | Written decision for embedded distribution and hosted service |
 | Pin engine/toolchain baseline | S | Minimal Cargo workspace and release manifest |
-| Dual transaction spike | M | Same atomic root + relations + conditional head protocol on both candidates |
+| Canonical transaction spike | M | Atomic root + relations + conditional head protocol on SurrealDB/SurrealKV |
 | Chunk/value strategy spike | S | Measured options for in-DB chunks vs managed pack files |
 | Crash harness | M | Kill points before/after engine commit and reopen verifier |
 | Public SDK lifecycle spike | S | Drop/shutdown, lock-release, reopen, and error-observability report |
@@ -60,8 +60,8 @@ Linux workspace proof. This is not two production adapters.
 - Define the exact small `CausalCommitStore` conformance scenario once: base root, five file changes,
   rename/delete, 20 KV changes, artifact, span, expected-head publish, receipt, reopen, fork, diff,
   first-parent log, and explanation.
-- Implement that scenario on embedded SurrealDB/SurrealKV and SQLite/AgentFS with normalized durable
-  acknowledgement. Keep both spikes narrow; do not build two full filesystems or production adapters.
+- Implement that scenario on embedded SurrealDB/SurrealKV and compare every logical result with the
+  pure reference model. Do not build a SQLite/AgentFS adapter or extend AgentFS.
 - Apply a minimal schema for repository, branch, commit, mutation, span/tool call, inode/dentry,
   file extent/chunk manifest, KV version, and idempotency receipt.
 - Prove one transaction can validate expected head, insert immutable persistent nodes/root, commit
@@ -83,19 +83,19 @@ Linux workspace proof. This is not two production adapters.
   the public SDK.
 - Interview design partners around: failed-run recovery, fork/compare, artifact provenance, and
   policy/audit. Ask for current workflow and cost, not feature enthusiasm.
-- Compare “extend AgentFS” with “ship separate SurrealFS” using existing mounts/SDKs, migration,
-  implementation effort, semantics, and distribution—not only database microbenchmarks.
+- Record the distribution and adoption gap versus AgentFS as competitor context without turning it
+  into an implementation branch.
 
 ### Exit criteria
 
-- Both adapter spikes pass the same atomicity, immutable-root, idempotency, ancestry, export, and
-  deterministic process-kill contract, or the report explains a disqualifying failure.
+- The canonical stack matches the reference model and passes atomicity, immutable-root, idempotency,
+  ancestry, export, and deterministic process-kill contracts.
 - Conditional head movement behaves correctly under at least 100 concurrent randomized campaigns.
 - No required feature depends on an internal KVS API.
 - Public SDK lifecycle either passes the required shutdown/reopen contract or has a supported
   upstream capability plan; crash correctness does not rely on graceful shutdown.
 - Logical export/restore reproduces heads and state root for the spike.
-- The engine report compares implementation size/complexity, crash/reopen, lifecycle, p99 latency,
+- The stack report covers implementation size/complexity, crash/reopen, lifecycle, p99 latency,
   disk amplification, export, ancestry/causal queries, and migration with raw reproducible output.
 - Initial latency, memory, and disk results are within a credible optimization distance of target.
 - Legal approves the intended next-stage use or identifies an acceptable agreement/cost.
@@ -478,20 +478,16 @@ credible, and the engine has an acceptable production/support posture.
 Examples: ship causal capture + forkable workspace API without broad POSIX; focus only on regulated
 artifact provenance; or make SurrealFS a local execution ledger rather than a general filesystem.
 
-#### Replace storage adapter
-
-Choose when product semantics validate but SurrealDB+SurrealKV fails reliability, latency,
-licensing, or lifecycle gates. Preserve domain schema, RPC, logical export, and conformance suite.
-
 #### Stop
 
 Choose when causal filesystem semantics do not improve a costly user workflow or the required
-engineering/operational complexity exceeds attainable value.
+engineering/operational complexity exceeds attainable value, including when the fixed
+SurrealDB/SurrealKV stack fails a critical gate.
 
 ## Cross-phase dependency map
 
 ```text
-domain decisions + dual-store spike
+domain decisions + SurrealDB/SurrealKV proof
   -> Linux causal workspace + immutable roots
       -> real recovery trial
           -> demand-gated filesystem breadth
@@ -526,7 +522,7 @@ No contributor owns “all correctness.” Cross-boundary changes require the re
 3. Define IDs and canonical encoding crate.
 4. Define mutation, persistent state-node/root, workspace, and commit domain types.
 5. Implement reference in-memory repository model.
-6. Implement the same minimal store contract in SQLite/AgentFS and SurrealDB/SurrealKV spikes.
+6. Implement the minimal store contract on SurrealDB/SurrealKV and compare it with the reference model.
 7. Implement release/schema manifest and startup compatibility check.
 8. Implement exclusive database-directory lock.
 9. Implement repository/root commit and immutable empty state-root creation.
