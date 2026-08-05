@@ -19,7 +19,7 @@ Choose one path; you do not need to read every Markdown file:
 | If you are… | Read this |
 |---|---|
 | Deciding whether the team should build it | [Team pitch](PITCH.md) → [executive decision](docs/00-executive-decision.md) |
-| Implementing the vertical slice | [Documentation guide: core implementation](docs/README.md#2-core-implementation--engineering-sequence) |
+| Implementing the full Rust product | [Active Rust SDK/product plan](RUST_SDK_PLAN.md) |
 | Reviewing the database choice | [Documentation guide: storage-engine review](docs/README.md#3-storage-engine-review--focused-audit) |
 | Looking for one specific design answer | [Canonical design index](docs/README.md#canonical-source-for-each-design-question) |
 
@@ -30,7 +30,7 @@ all reference documents by purpose.
 
 ```mermaid
 flowchart TB
-    C["Agent SDKs, CLI, sandbox, FUSE"] --> D["surrealfsd: sole semantic writer"]
+    C["Rust SDK, CLI, sandbox, FUSE/NFS, MCP"] --> D["surrealfsd: sole semantic writer"]
     D --> K["SurrealFS semantic kernel"]
     K --> A["SurrealDB adapter via public Rust SDK"]
     A --> S["Records + graph + indexes + transactions"]

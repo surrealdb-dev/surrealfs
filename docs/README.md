@@ -20,22 +20,24 @@ Stop there unless you are reviewing implementation details.
 
 For the engineers building the vertical slice, read in this order:
 
-1. [Product contract](02-product-contract.md) — what the system promises and explicitly does not.
-2. [ADR 0004](adr/0004-immutable-state-roots.md) and [ADR 0005](adr/0005-transactional-workspaces-and-attribution.md)
+1. [Active full-Rust product plan](../RUST_SDK_PLAN.md) — phased AgentFS parity, daemon, mounts,
+   sandbox, recovery, effort, and exit gates.
+2. [Product contract](02-product-contract.md) — what the system promises and explicitly does not.
+3. [ADR 0004](adr/0004-immutable-state-roots.md) and [ADR 0005](adr/0005-transactional-workspaces-and-attribution.md)
    — the two foundational implementation decisions.
-3. [System architecture](03-system-architecture.md) — processes, boundaries, write/read paths, and
+4. [System architecture](03-system-architecture.md) — processes, boundaries, write/read paths, and
    deployment.
-4. [Canonical data model](04-data-model.md) — IDs, records, relations, history, roots, and indexes.
-5. [Commit protocol](05-commit-protocol.md) — atomicity, retries, conflicts, durability, and recovery.
-6. [External effects and recovery](16-external-effects-and-recovery.md) — exact local restoration,
+5. [Canonical data model](04-data-model.md) — IDs, records, relations, history, roots, and indexes.
+6. [Commit protocol](05-commit-protocol.md) — atomicity, retries, conflicts, durability, and recovery.
+7. [External effects and recovery](16-external-effects-and-recovery.md) — exact local restoration,
    action attribution, reconciliation, compensation, and explicit recovery boundaries.
-7. [Execution graph](07-execution-graph.md) — how actions, commits, artifacts, policies, and
+8. [Execution graph](07-execution-graph.md) — how actions, commits, artifacts, policies, and
    evaluations connect.
-8. [SurrealDB + SurrealKV contract](08-surrealdb-surrealkv.md) — canonical adapter boundary and stack gates.
-9. [API and SDK design](09-api-and-sdk.md) — commands, queries, transactions, subscriptions, and
+9. [SurrealDB + SurrealKV contract](08-surrealdb-surrealkv.md) — canonical adapter boundary and stack gates.
+10. [API and SDK design](09-api-and-sdk.md) — commands, queries, transactions, subscriptions, and
    errors.
-10. [Testing and benchmarks](12-testing-and-benchmarks.md) — executable proof of the above.
-11. [Detailed roadmap](13-roadmap.md) — implementation order and exit criteria.
+11. [Testing and benchmarks](12-testing-and-benchmarks.md) — executable proof of the above.
+12. [Detailed roadmap](13-roadmap.md) — implementation order and exit criteria.
 
 Read [filesystem semantics](06-filesystem-semantics.md) before implementing filesystem operations,
 and [security and tenancy](10-security-and-tenancy.md) before accepting real customer data.
@@ -107,6 +109,7 @@ store or mutate SurrealFS tables directly.
 | How does AgentFS data move? | [Migration](11-migration.md) | Neutral migration bundle specification |
 | How is correctness proven? | [Testing and benchmarks](12-testing-and-benchmarks.md) | Crash, model, conformance, and workload suites |
 | What gets built first? | [Roadmap](13-roadmap.md) | Phase exit and stop criteria |
+| What is the active full-Rust delivery plan? | [Rust SDK/product plan](../RUST_SDK_PLAN.md) | Parity matrix, phases, demos, estimates, and first backlog |
 | What can invalidate the design? | [Risk register](14-risk-register.md) | Named owners, indicators, and contingencies |
 
 ## Complete reference catalog
@@ -133,6 +136,7 @@ store or mutate SurrealFS tables directly.
 
 ### Delivery and assurance
 
+- [Active full-Rust SDK/product plan](../RUST_SDK_PLAN.md)
 - [Security and tenancy](10-security-and-tenancy.md)
 - [Migration from AgentFS](11-migration.md)
 - [Testing and benchmarks](12-testing-and-benchmarks.md)

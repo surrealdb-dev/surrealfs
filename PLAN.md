@@ -1,12 +1,16 @@
 # SurrealFS master plan
 
+> **Active delivery plan:** [RUST_SDK_PLAN.md](RUST_SDK_PLAN.md) defines the complete full-Rust
+> product sequence: the sole public Rust SDK plus daemon, CLI, FUSE, NFS, overlay, sandbox, MCP,
+> sync, recovery, and external-effect workflows. Non-Rust SDKs are not planned.
+
 ## Objective
 
 Build SurrealFS from scratch as a causal execution substrate for agents, using embedded SurrealDB
 over SurrealKV as the canonical store. Test it against a backend-neutral reference model, hard
 crash/invariant gates, and representative workloads. The initial product must make agent state inspectable,
 forkable, attributable, and recoverable without maintaining multiple production engines or
-duplicating filesystem semantics in every language SDK.
+duplicating filesystem semantics across runtime surfaces.
 
 The reconstruction succeeds only if it produces user-visible capabilities that the existing AgentFS
 architecture cannot provide reliably:
@@ -26,7 +30,8 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
    or other production adapter is planned.
 2. **One production format:** no SurrealKV-only production adapter in the first release.
 3. **One writer:** the Rust daemon owns the database directory and all state transitions.
-4. **One semantic kernel:** language SDKs call the daemon; they do not reimplement filesystem rules.
+4. **One semantic kernel:** the Rust SDK, CLI, mounts, sandbox, and MCP server call the daemon; they
+   do not reimplement filesystem rules.
 5. **Immutable roots:** commits reference content-addressed namespace/inode/extent/KV roots;
    materialized heads are disposable projections.
 6. **Graph is canonical:** provenance relations live in the same transactionally consistent store.
@@ -70,7 +75,7 @@ A storage-engine replacement without these outcomes is a failed reconstruction.
 ### D. SDK and integrations
 
 - Define a versioned local RPC protocol.
-- Convert Rust, TypeScript, Python, and Go SDKs into clients.
+- Build one Rust reference SDK as the only supported client-language SDK.
 - Preserve high-level AgentFS API compatibility where it does not violate new semantics.
 - Integrate one representative agent framework end to end before broadening coverage.
 - Add read-only graph query and event subscription APIs.
@@ -156,10 +161,11 @@ Extend the enforced workspace boundary across the integrations demanded by partn
 lifecycle, nested observational spans, explicit nested/concurrent writer policy, read/write sets,
 artifacts, external observations, policy decisions, and evaluations.
 
-### Phase 6 — SDK convergence and compatibility
+### Phase 6 — Rust SDK convergence and compatibility
 
-Move all non-Rust SDKs to RPC. Add compatibility shims and deprecate direct database access. Ensure
-that a conformance test produces identical logical results through every supported SDK.
+Stabilize the Rust SDK over RPC, add compatibility shims, and prohibit direct database access.
+Ensure a conformance test produces identical logical results through the Rust SDK, CLI, mounts,
+sandbox, and MCP surfaces.
 
 ### Phase 7 — migration and operational hardening
 

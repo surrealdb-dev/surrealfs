@@ -6,7 +6,8 @@ The public API must expose SurrealFS concepts rather than SurrealDB tables. Clie
 open spans, mutate repository state, fork commits, query provenance, and export data. They do not
 need to know whether the store uses documents, relation tables, or key ranges.
 
-This boundary is the product's compatibility layer and keeps storage-specific behavior out of SDKs.
+This boundary is the product's compatibility layer and keeps storage-specific behavior out of the
+Rust SDK and other runtime surfaces.
 
 ## Process boundary
 
@@ -15,15 +16,15 @@ on Unix-like systems and an equivalent restricted local IPC mechanism on other p
 remote TLS transport can be added later without changing domain messages.
 
 ```text
-FUSE / CLI / Rust SDK / TypeScript SDK / Python SDK / Go SDK
-                             |
-                 versioned RPC protocol
-                             |
-                 auth + admission + policy
-                             |
-                    domain command service
-                             |
-                  SurrealDB storage adapter
+Rust SDK / CLI / FUSE / NFS / sandbox / MCP
+                       |
+           versioned RPC protocol
+                       |
+           auth + admission + policy
+                       |
+              domain command service
+                       |
+            SurrealDB storage adapter
 ```
 
 The protocol should use Protobuf or an equivalently strict interface definition with:
@@ -349,14 +350,14 @@ official migration or recovery procedure.
 
 ## SDK tiers
 
-1. **Rust reference SDK:** full API, streaming, mount integration helpers, and conformance oracle.
-2. **TypeScript SDK:** agent-framework and Node integrations; no direct embedded database access.
-3. **Python SDK:** agent-framework and evaluation integrations; streaming with bounded buffers.
-4. **Go SDK:** sandbox, infrastructure, and server integrations.
+1. **Rust reference SDK:** the only supported client-language SDK, with the full API, streaming,
+   mount/runtime integration helpers, and conformance oracle.
+2. **Runtime surfaces:** the Rust CLI, FUSE, NFS, sandbox, and MCP server use the same protocol and
+   domain contracts; none opens the database directly.
 
-Generated transport types are wrapped in hand-written domain types. SDKs validate obvious input
-but never duplicate authorization or commit logic. All SDKs run the same black-box contract suite
-against a daemon fixture.
+Generated transport types are wrapped in hand-written Rust domain types. The SDK validates obvious
+input but never duplicates authorization or commit logic. Every Rust runtime surface runs the same
+black-box contract suite against a daemon fixture.
 
 ## Compatibility and deprecation
 
@@ -377,7 +378,8 @@ without treating vendor tracing IDs as durable identity.
 ## API acceptance criteria
 
 - A killed client can safely learn whether a timed-out command committed.
-- Four SDKs produce identical canonical outcomes for the conformance corpus.
+- The Rust SDK, CLI, FUSE, NFS, sandbox, and MCP paths produce identical canonical outcomes for the
+  conformance corpus where platform semantics permit.
 - Pagination is stable while a branch head changes concurrently.
 - No ordinary API can create a commit without an author and mutation set.
 - No captured workspace can publish without a valid daemon-issued capability, bound author span,

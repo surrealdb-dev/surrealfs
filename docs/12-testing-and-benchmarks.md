@@ -230,7 +230,7 @@ error.
 ## API and SDK conformance
 
 A language-neutral corpus specifies request bytes/JSON, expected response, error code, and state
-effects. Rust, TypeScript, Python, and Go SDKs run it against the same daemon build.
+effects. The Rust SDK, CLI, FUSE, NFS, sandbox, and MCP clients run it against the same daemon build.
 
 Coverage includes negotiation, unknown fields, deadlines, reconnect, idempotent retry,
 pagination, stream cancellation, backpressure, authentication expiry, subscriptions and cursor

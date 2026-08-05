@@ -13,6 +13,11 @@ Effort bands are rough **experienced engineer-weeks** for planning, not dates:
 - `L`: 7-12 engineer-weeks;
 - `XL`: 13+ engineer-weeks or a separate program.
 
+The bands below describe each roadmap phase, not the cost of the complete product. The authoritative
+full-Rust phase sum is **83–136 engineer-weeks** in
+[the full-Rust product plan](../RUST_SDK_PLAN.md); roadmap and product-plan phase numbers do not map
+one-to-one.
+
 Some work runs in parallel, but correctness-critical ownership stays explicit. A credible core
 team is two senior Rust/storage engineers, one filesystem/runtime engineer, and one product/SDK
 engineer, with part-time security, database, legal, and developer-experience review. A smaller
@@ -261,7 +266,8 @@ required by retained partners and, if demanded, one mounted integration.
 
 ### Effort
 
-`XL`. Filesystem correctness is likely the largest early engineering risk.
+`XL`. This maps to **13–18 engineer-weeks** for Phase 4 of the full-Rust product plan. Filesystem
+correctness is likely the largest early engineering risk.
 
 ## Phase 4 — richer snapshots, diffs, and optional merge
 
@@ -340,19 +346,19 @@ validated workflow.
 
 `L`.
 
-## Phase 6 — SDK convergence and compatibility
+## Phase 6 — Rust SDK and surface convergence
 
 ### Goal
 
-Make SurrealFS adoptable without binding clients to Rust or the database schema.
+Make SurrealFS adoptable through one complete Rust SDK without binding any runtime surface to the
+database schema.
 
 ### Backlog
 
 - Stabilize protocol v1 and capability negotiation.
 - Rust reference SDK and conformance oracle.
-- TypeScript and Python SDKs based on partner demand.
-- Go SDK for infrastructure/sandbox integrations.
-- Generated types wrapped in idiomatic domain APIs.
+- Rust CLI, FUSE, NFS, sandbox, and MCP clients over the same protocol.
+- Generated transport types wrapped in idiomatic Rust domain APIs.
 - Resumable streaming, backpressure, subscriptions, auth refresh, and structured retries.
 - Framework adapters and instrumentation middleware.
 - Analyst views and safe scoped raw SurrealQL service.
@@ -361,14 +367,16 @@ Make SurrealFS adoptable without binding clients to Rust or the database schema.
 
 ### Exit criteria
 
-- All supported SDKs pass the same black-box corpus.
+- The Rust SDK and all Rust runtime surfaces pass the same black-box corpus.
 - Network disconnect after commit is handled without duplicate mutations.
 - No SDK opens or depends on the database directory/schema.
 - Two independent integrations adopt the API without changes to the semantic kernel.
 
 ### Effort
 
-`L` across languages; prioritize based on actual users.
+`L` for this SDK/surface-convergence phase alone; it is not the complete-product estimate. The
+active product breakdown totals 83–136 engineer-weeks in
+[the full-Rust product plan](../RUST_SDK_PLAN.md).
 
 ## Phase 7 — migration and operational hardening
 

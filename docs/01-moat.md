@@ -124,7 +124,7 @@ SurrealFS gains defensibility by sitting below frameworks and above the local ex
 
 - FUSE/NFS/filesystem mounts;
 - sandbox and process execution;
-- Rust, TypeScript, Python, and Go SDKs;
+- the Rust SDK, CLI, and Rust runtime integrations;
 - MCP and tool protocols;
 - coding-agent and research-agent frameworks;
 - local and CI execution;

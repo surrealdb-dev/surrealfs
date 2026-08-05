@@ -169,6 +169,13 @@ The current `SurrealKvConfig` defaults are:
 Dynamic machine-relative defaults are reasonable engine defaults but unsuitable as an unnoticed
 product contract. A SurrealFS release manifest should record the exact effective configuration.
 
+At this pin, the public endpoint parser prefixes every query parameter with `datastore_`, while the
+SurrealKV adapter expects its engine-specific controls under `surrealkv_*`. The public SDK also does
+not expose a typed max-memtable builder. SurrealFS therefore cannot honestly claim that it has pinned
+the effective maximum through the current public API. This is an owned upstream change: add a typed,
+public SurrealKV configuration surface, correct the routing, expose effective configuration, and
+test it before Phase 1 exits.
+
 ### Meaning of `sync=every`
 
 The SurrealKV adapter commits transactions with `Durability::Eventual`, then uses a shared commit
@@ -181,6 +188,22 @@ flush failures, and the boundary between database apply and client receipt.
 
 `sync=<interval>` can lose recent acknowledged work on a system crash within the interval, and
 `sync=never` relies on the operating system. Neither should back a v1 durable repository.
+
+## At-rest encryption and dependency distribution
+
+The audited SurrealKV 0.21.3 adapter exposes no full-store encryption or key-management path. This
+is a known gap, not an unanswered Phase 9 discovery. Because SurrealDB and SurrealKV can be changed,
+the product plan treats complete-store encryption as upstream work that must cover WAL, value log,
+indexes, manifests, compaction/temporary artifacts, physical recovery copies, rotation, wrong-key
+behavior, and crash recovery before claiming parity. Logical exports sit above raw storage
+encryption and require a separate encrypted envelope or explicit plaintext warning. Payload-only
+encryption and OS full-disk encryption may be useful deployment modes, but neither is a SurrealFS
+whole-store encryption implementation.
+
+The audited `3.3.0-nightly` crate is not published through the normal crates.io release channel, and
+the exact commit is on a private personal branch. That is usable for authorized internal work only.
+An external demo or beta requires an immutable accessible tag/revision or source archive with the
+same compatibility-suite evidence; a branch name alone is not a durable dependency pin.
 
 ## Startup, migrations, and downgrade behavior
 
@@ -301,6 +324,10 @@ has been completed. A partial broad test invocation is deliberately not counted 
 | Is SurrealDB/SurrealKV the chosen architecture? | Yes; production readiness still requires the Phase 0 reference-model, fault, lifecycle, workload, legal, and product gates |
 
 ## Revalidation checklist for the next engine pin
+
+The items below are currently a manual checklist, not an executable test suite. Phase 0 of
+`RUST_SDK_PLAN.md` must turn them into a versioned command/CI job with machine-readable pass/fail
+output before the next pin is accepted.
 
 For every revision change:
 
