@@ -1,0 +1,23 @@
+[package]
+name = "surrealfs-fuse"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# FUSE is a Linux kernel interface. The crate builds to nothing elsewhere rather than failing,
+# so a macOS workspace build stays green while the adapter itself is only ever compiled and
+# tested where it can actually be mounted.
+[target.'cfg(target_os = "linux")'.dependencies]
+fuser = "0.18"
+libc = "0.2"
+
+[dependencies]
+surrealfs-kernel = { workspace = true }
+surrealfs-mount = { workspace = true }
+surrealfs-types = { workspace = true }
+tokio = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+surrealfs-store = { workspace = true }
+tempfile = { workspace = true }

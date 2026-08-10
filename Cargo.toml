@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/surrealfs-types",
+    "crates/surrealfs-model",
+    "crates/surrealfs-content",
+    "crates/surrealfs-store",
+    "crates/surrealfs-kernel",
+    "crates/surrealfs-core",
+    "crates/surrealfs-sdk",
+    "crates/surrealfs-testkit",
+    "crates/surrealfs-mount",
+    "crates/surrealfs-sandbox",
+    "crates/surrealfs-fuse",
+    "crates/surrealfs-run",
+    "crates/surrealfs-mcp",
+    "crates/surrealfs-cli",
+    "examples/rust-sdk-basic",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+license = "BUSL-1.1"
+publish = false
+
+[workspace.dependencies]
+surrealfs-types = { path = "crates/surrealfs-types" }
+surrealfs-model = { path = "crates/surrealfs-model" }
+surrealfs-content = { path = "crates/surrealfs-content" }
+surrealfs-store = { path = "crates/surrealfs-store" }
+surrealfs-kernel = { path = "crates/surrealfs-kernel" }
+surrealfs-core = { path = "crates/surrealfs-core" }
+surrealfs-sdk = { path = "crates/surrealfs-sdk" }
+surrealfs-testkit = { path = "crates/surrealfs-testkit" }
+surrealfs-mcp = { path = "crates/surrealfs-mcp" }
+surrealfs-mount = { path = "crates/surrealfs-mount" }
+surrealfs-sandbox = { path = "crates/surrealfs-sandbox" }
+surrealfs-fuse = { path = "crates/surrealfs-fuse" }
+surrealfs-run = { path = "crates/surrealfs-run" }
+
+# Engine pin: see COMPATIBILITY.md. Only the public SDK crate, never internal engine crates.
+surrealdb = { path = "/Users/kfarhan/workspace/surrealdb/surrealdb-private/surrealdb", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
+
+blake3 = "1"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "fs"] }
+uuid = { version = "1", features = ["v4"] }
+fs4 = { version = "0.13", features = ["sync"] }
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+anyhow = "1"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+opt-level = 2

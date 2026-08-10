@@ -1,0 +1,18 @@
+[package]
+name = "surrealfs-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+surrealfs-types = { workspace = true }
+surrealfs-content = { workspace = true }
+surrealfs-core = { workspace = true }
+surrealfs-kernel = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

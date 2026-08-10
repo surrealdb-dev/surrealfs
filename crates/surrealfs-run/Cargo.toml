@@ -1,0 +1,16 @@
+[package]
+name = "surrealfs-run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+surrealfs-kernel = { workspace = true }
+surrealfs-sandbox = { workspace = true }
+surrealfs-types = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+surrealfs-store = { workspace = true }
+tempfile = { workspace = true }

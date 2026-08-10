@@ -1,0 +1,19 @@
+[package]
+name = "surrealfs-mount"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+surrealfs-types = { workspace = true }
+surrealfs-content = { workspace = true }
+surrealfs-kernel = { workspace = true }
+tokio = { workspace = true }
+libc = "0.2"
+
+[dev-dependencies]
+libc = "0.2"
+surrealfs-store = { workspace = true }
+tokio = { workspace = true }

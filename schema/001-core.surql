@@ -1,5 +1,5 @@
 -- SurrealFS core schema design draft
--- Target: the pinned SurrealDB 3.x development baseline described in docs/08.
+-- Target: the pinned SurrealDB 3.x development baseline described in RUST_SDK_PLAN.md.
 -- Status: NOT an applied production migration. Validate this file against the exact pinned
 -- engine, split it into numbered forward migrations, and add schema tests before implementation.
 --

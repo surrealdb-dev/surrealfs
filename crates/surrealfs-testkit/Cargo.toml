@@ -1,0 +1,20 @@
+[package]
+name = "surrealfs-testkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+surrealfs-types = { workspace = true }
+surrealfs-content = { workspace = true }
+surrealfs-sdk = { workspace = true }
+surrealfs-store = { workspace = true }
+surrealfs-kernel = { workspace = true }
+surrealfs-mcp = { workspace = true }
+surrealfs-mount = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }

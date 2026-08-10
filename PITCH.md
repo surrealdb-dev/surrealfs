@@ -1,13 +1,17 @@
 # SurrealFS: the causal state filesystem for agents
 
-> Every captured agent action becomes a verifiable, forkable, recoverable state transition over
-> files and runtime state.
+> Every authoritatively published agent action becomes a verifiable, forkable, recoverable state
+> transition over files and runtime state.
 
 ## The decision in one page
 
-SurrealFS should be built as a direct product in the **AgentFS/TigerFS agent-filesystem and persistent
-state market**. The filesystem is the compatibility and adoption surface. The differentiated kernel
-is action-level causality and recovery across files, runtime KV, artifacts, and agent execution.
+SurrealFS should build a reusable Rust capability for the **AgentFS/TigerFS agent-filesystem and
+persistent-state category**, with the lowest-risk first shipping posture as a durable-workspace and
+recovery feature inside Spectron or another agent runtime that owns the action boundary. A standalone
+product is an option only if the product and distribution gates pass. The filesystem is the
+compatibility surface. The differentiated hypothesis is exact action-to-state publication plus
+evidence-graded, dependency-aware recovery across files, runtime KV, artifacts, and agent execution.
+The standalone market and moat are not validated yet.
 
 It should not be pitched as a SurrealDB wrapper, a faster local database, or versioned storage alone.
 Those are implementation capabilities, not the reason a customer switches.
@@ -15,16 +19,19 @@ Those are implementation capabilities, not the reason a customer switches.
 The product promise is that a team can answer four expensive questions with evidence:
 
 1. **Explain:** Why does this file, value, or artifact exist, and which exact action produced it?
-2. **Recover:** Where did the first harmful state appear, what depends on it, and what is the minimum
-   safe recovery point?
+2. **Recover:** Where did the first harmful state appear, what can the available input evidence prove
+   depends on it, and what is the minimum safe recovery point?
 3. **Fork:** Can we retry from the exact pre-action state without copying the whole workspace?
-4. **Prove:** Can we verify which principal, input, tool, policy, and model governed the transition?
+4. **Prove:** Can we verify which principal, tool, policy, model, and verified/declared/unknown inputs
+   governed the transition?
 
-The chosen architecture is one embedded SurrealDB instance backed by SurrealKV, owned by
-one local daemon. Filesystem state, agent KV, execution records, graph relations, immutable roots,
-idempotency receipts, and branch heads move in one semantic transaction. Phase 0 validates that
-stack against a backend-neutral reference model, crash/invariant gates, and representative product
-workloads. SurrealFS is implemented from scratch; no second adapter or AgentFS extension is planned.
+The chosen architecture is one embedded SurrealDB instance backed by SurrealKV and one embeddable
+Rust semantic kernel. One process exclusively owns each store: initially the Rust SDK caller, later
+a foreground mount/sandbox runtime, or optionally `surrealfsd` when multiple clients, remote access,
+or persistent workers justify it. Filesystem state, agent KV, execution records, graph relations,
+immutable roots, idempotency receipts, and branch heads move in one semantic transaction. Phase 0
+validates that stack against a backend-neutral reference model, crash/invariant gates, representative
+product workloads, and independent customer evidence. No second adapter or AgentFS extension is planned.
 
 The investment recommendation is deliberately narrower than “match every AgentFS and TigerFS
 feature before launch”:
@@ -55,8 +62,7 @@ SurrealFS makes the state-transition boundary the capture boundary.
 
 ```mermaid
 flowchart LR
-    A["Agent or tool"] -->|"semantic command"| D["surrealfsd"]
-    D --> K["Semantic kernel"]
+    A["Rust agent or foreground runtime"] -->|"domain command"| K["surrealfs-core"]
     K -->|"one atomic commit"| S["State + causality"]
     S --> F["Files and KV"]
     S --> G["Runs, spans, artifacts, policies"]
@@ -102,20 +108,24 @@ flowchart LR
     C -->|"fork point"| X["alternate branch"]
 ```
 
-## The wedge
+## The initial market hypothesis
 
-The first product should not ask customers to replace their general filesystem. It should solve one
-workflow where causal state has immediate economic value:
+The first product should not ask customers to replace their general filesystem. The leading market
+hypothesis is:
 
-**Recommended wedge: debug, recover, and compare long-running coding-agent attempts.**
+> **Platform teams operating concurrent or long-horizon agents over shared durable state need exact
+> transition proof and selective recovery when Git, rewind, tracing, and whole-sandbox snapshots are
+> insufficient.**
 
-This wedge has the right properties: failures are common, reruns are expensive, state matters,
-actions span multiple tools, and the result can be evaluated. Artifact provenance and regulated
-chain-of-custody are credible later wedges, but they introduce more policy and compliance surface
-before the core is proven.
+The economic value must come from human investigation time, cross-agent contamination, retained
+expensive state, irreversible or ambiguous effects, or a proof obligation. Falling token and
+snapshot costs make “avoid one model rerun” an inadequate primary case. Generic governance is also
+too broad: cloud and observability vendors already bundle identity, policy, trace, and audit features.
 
-A first demo should show one harmful tool action, an exact pre-action fork, a corrected retry, and a
-causal comparison. The demo should not lead with SurrealQL, storage benchmarks, or a graph browser.
+A coding-agent failure remains the first demo because it is legible and testable. It should show one
+harmful tool action, an exact pre-action fork, a corrected retry, and a causal comparison. The demo is
+not evidence that individual coding-agent developers are the buyer and should not lead with
+SurrealQL, storage benchmarks, or a graph browser.
 
 ## The market position
 
@@ -129,15 +139,60 @@ their practical surface to be adoptable, then win on the logical action and reco
 | [TigerFS](https://github.com/timescale/tigerfs) | ACID filesystem, history, user attribution, savepoints, atomic multi-file undo, service forks | History records physical filesystem operations rather than exact tool actions; selective per-user undo is unsafe under some interleaving; history can be bypassed by direct table access |
 | Git and Docker Agent snapshots | File history, worktree isolation, turn-level undo | Runtime KV, artifacts, ignored/large state, subprocess causality, and atomic action boundaries |
 | E2B, Daytona, and VM snapshots | Full-environment checkpoints, restore, and fork | The snapshot is opaque: it does not explain individual mutations or calculate a minimal safe recovery set |
+| [Claude Code checkpoints](https://code.claude.com/docs/en/checkpointing) | Automatic file checkpoints and session rewind | Bash/external/network state and cross-agent dependency recovery remain outside the guarantee |
+| [Cloudflare Computer](https://blog.cloudflare.com/cloudflare-computer/) and runtime-owned workspaces | Durable authoritative filesystem plus runtime audit/control | A sidecar cannot claim atomic causality; SurrealFS must become the backend or a conformed transactional bridge |
 | LangGraph and durable workflows | Declared workflow-state checkpoints, retry, and replay | Uninstrumented subprocess files and state outside the workflow schema |
-| LangSmith, Braintrust, and OpenTelemetry | Tool trajectories, traces, evaluations, and a growing common agent vocabulary | They observe execution but do not atomically govern the workspace mutation boundary |
-| SurrealFS target | Filesystem + KV state versioned by logical agent action | Must prove capture completeness, recovery value, durability, performance, and adoption |
+| LangSmith, cloud agent governance, Braintrust, and OpenTelemetry | Tool trajectories, policy/audit, evaluations, and a growing common agent vocabulary | Exact state-transition proof and dependency-aware recovery are not their general contract |
+| SurrealFS target | Filesystem + KV state versioned by logical agent action | Must prove publication coverage, honest input evidence, recovery value, durability, performance, and adoption |
+
+### What Cloudflare Computer changes
+
+Cloudflare Computer is useful primary evidence, but it does not justify copying its entire design.
+Its preview [`@cloudflare/dofs`](https://github.com/cloudflare/computer/tree/main/packages/dofs)
+package evaluated AgentFS and rebuilt the filesystem because Cloudflare's sync requires hash-addressed
+chunks and shared manifests, while AgentFS stores inline inode/chunk bytes. Cloudflare still adopted
+parts of AgentFS's metadata vocabulary and treats its
+[published specification comparison](https://github.com/cloudflare/computer/blob/main/docs/03_filesystem_schema.md#prior-art-and-selective-reuse)
+as the reusable asset.
+
+The objective conclusions are:
+
+- content-addressed chunks, missing-object probes, resumable transfer, FUSE buffering, and storage
+  tuning are credible table stakes, not a moat;
+- a platform owner is likely to rebuild an SDK/runtime implementation that does not fit its storage
+  boundary, so SurrealFS cannot depend on proprietary schema adoption;
+- a portable receipt/root specification, golden vectors, and conformance corpus should be published
+  before broad runtime integrations because those artifacts can survive an implementation rewrite;
+- Cloudflare's current live-state sync, process-memory write buffers, and silent cross-container
+  last-write-wins are not suitable recovery semantics for SurrealFS and must not be copied;
+- Cloudflare's source is preview evidence and an engineering benchmark, not proof of customer demand
+  or proof that SurrealFS has a moat.
+
+This narrows the adoption decision: borrow correctness and performance techniques only where they
+support immutable roots and explicit publication. Do not add Cloudflare-specific tables, a second
+SQLite implementation, or a path-revision sync log merely to resemble `dofs`.
+
+### What the POSIX-read critique changes
+
+| Claim | Assessment | Design consequence |
+|---|---|---|
+| A standalone AgentFS/TigerFS competitor cannot work | Not proven, but distribution and commoditization make it a weak default assumption | Ship first as a reusable runtime/platform feature; fund standalone breadth only after repeated external adoption and willingness to pay |
+| A durable workspace feature can be built quickly from established primitives | Directionally credible; a one-quarter date depends on the team, engine gates, and compatibility scope | Reuse AgentFS behavior/code where safe and `dofs` techniques where relevant; do not equate the vertical slice with complete parity |
+| The valuable ideas are action-to-state binding and dependency-aware recovery, not filesystem novelty | Supported | Treat filesystem, mounts, chunks, and sync as adoption infrastructure rather than the moat |
+| Both ideas fail at the filesystem layer | Too broad | Exact action-to-state publication still works for a private action workspace; exact fine-grained dependency inference does not follow from that fact |
+| A POSIX surface cannot reliably reveal the exact semantic read set of an arbitrary subprocess tree | Supported | Never claim complete input capture from FUSE/NFS/syscall traces; use verified API objects, declared inputs, or conservative scopes |
+
+The inversion is useful: a runtime such as Spectron can mediate model/tool inputs and assign one
+private workspace to one logical action. SurrealFS then binds the resulting state exactly while the
+runtime supplies stronger input evidence. Unmodified POSIX subprocesses remain supported, but their
+read observations are hints and their safe dependency scope defaults to the entire base root plus
+explicitly unknown external inputs.
 
 ### Table stakes for direct competition
 
 SurrealFS must provide enough of the category baseline to be credible:
 
-- a filesystem surface usable by ordinary tools plus direct Python and TypeScript APIs;
+- a filesystem surface usable by ordinary tools plus the direct Rust SDK;
 - files and KV in one logical repository;
 - local-first, crash-safe operation;
 - explicit snapshots, branches, timeline, and diff;
@@ -163,7 +218,8 @@ across real agent execution surfaces.
 Every durable action produces a portable receipt whose identity does not depend on SurrealDB:
 
 ```text
-principal + daemon-issued workspace capability + run + trace/span + tool + request digest
+principal + store-owner-issued workspace capability or declared embedded action + capture grade
+run + trace/span + tool + request digest
 before filesystem/KV root -> ordered mutations -> after filesystem/KV root
 observed inputs + produced artifacts + external-effect intentions
 policy/evaluation evidence + outcome + durability + optional signature/attestation
@@ -175,16 +231,22 @@ anchor selected roots outside the repository. A timestamp-correlated trace is no
 receipt because it did not participate in publishing the state transition. Trace context provides
 interoperable correlation; it is never accepted as the authority to publish a workspace.
 
-The external portion is not a distributed-rollback claim. The standalone
-[external effects and recovery design](docs/16-external-effects-and-recovery.md) specifies durable
-intent-before-dispatch, capability-graded reconciliation, compensation, persistent divergence, and a
-combined recovery workflow that restores local state exactly without pretending to reverse the
-outside world.
+Receipts expose one of four capture grades: `AUTHORITATIVE_ENFORCED` for SurrealFS publication plus
+verified process scope, `AUTHORITATIVE_DECLARED` for an atomic embedded caller whose action identity
+is trusted, `TRANSACTIONAL_BRIDGE` for a vendor-owned state transaction that includes the receipt and
+passes conformance, or `OBSERVED` for sidecar/checkpoint correlation. “Alongside” is never described
+as atomic.
+
+The external portion is not a distributed-rollback claim. The
+[architecture contract](docs/03-system-architecture.md#external-effects-and-combined-recovery)
+specifies durable intent-before-dispatch, capability-graded reconciliation, compensation,
+persistent divergence, and a combined recovery workflow that restores local state exactly without
+pretending to reverse the outside world.
 
 ## The moat
 
-SurrealDB and SurrealKV are not the moat. They are enabling infrastructure. The moat is a compound of
-five reinforcing layers:
+SurrealDB and SurrealKV are not the moat. They are enabling infrastructure. A potential moat must
+compound five reinforcing layers:
 
 1. **Causal correctness:** edge cases around retries, crashes, concurrent writers, file semantics,
    open handles, nested processes, external effects, and partial outcomes become executable
@@ -192,8 +254,10 @@ five reinforcing layers:
 2. **Causal recovery intelligence:** identify the first harmful transition, calculate downstream
    dependencies, refuse unsafe selective rollback, choose the minimum safe fork, and retain or
    transplant independent later work.
-3. **Capture completeness:** control at filesystem, direct SDK, sandbox, subprocess, MCP/tool, CI, and
-   agent-framework boundaries without silent bypass or parallel truths.
+3. **Publication coverage and honest input evidence:** control state publication across filesystem,
+   direct SDK, sandbox, MCP/tool, CI, and agent-framework boundaries while recording inputs as
+   verified, declared, conservatively scoped, or unknown—never inventing completeness from POSIX
+   observation.
 4. **Verifiable evidence and policy:** portable state receipts, integrity roots, customer-controlled
    signing, explicit external-effect records, and policy enforcement at the commit boundary.
 5. **Integration distribution:** the same kernel semantics across the agent runtimes and execution
@@ -205,20 +269,21 @@ improve recovery suggestions, but privacy and label scarcity make it an option r
 
 ```mermaid
 flowchart LR
-    I["More execution integrations"] --> C["More complete causal capture"]
+    I["More execution integrations"] --> C["More authoritative publication + input evidence"]
     C --> T["Greater trust in state receipts"]
     T --> W["More explain, recover, and fork use"]
     W --> R["Better recovery workflows and conformance cases"]
     R --> I
 ```
 
-The hard-to-copy asset is not a proprietary byte layout. It is the combination of semantic coverage,
-years of conformance cases, dependency-aware recovery, trusted evidence, and integration
-distribution. An engine can be replaced; those assets should survive.
+The hard-to-copy hypothesis is not a proprietary byte layout. It is the combination of semantic
+coverage, years of conformance cases, dependency-aware recovery, trusted evidence, and integration
+distribution. Incumbents can copy a schema or receipt more quickly than SurrealFS can copy their
+distribution, so this compound advantage must be demonstrated rather than asserted.
 
 The strategic test is multiplicative:
 
-> **Moat = capture completeness × recovery usefulness × integration adoption × trust.**
+> **Moat = authoritative publication coverage × recovery usefulness × integration adoption × trust.**
 
 If any factor is close to zero, the filesystem may still be useful, but it is not defensible.
 
@@ -236,7 +301,10 @@ Measure product behavior, not stored bytes:
 - evaluation reproducibility from identical starting commits;
 - policy decisions and receipts supported by direct evidence;
 - number of execution integrations passing the same causal conformance suite;
-- successful independent verification of exported state-transition receipts.
+- successful independent verification of exported state-transition receipts;
+- repeated cases where Git, agent rewind, tracing, and sandbox snapshots were insufficient;
+- authoritative/conformed integrations rather than a growing count of observed-only adapters;
+- willingness to pay for recovery/proof outcomes rather than storage or token savings alone.
 
 If users only store files, only browse a graph, or can obtain equivalent value from Git plus tracing,
 the moat thesis has failed.
@@ -248,12 +316,13 @@ The workload needs both operational state access and causal graph access:
 - point/range reads for paths, inodes, directory entries, extents, branch heads, KV, and receipts;
 - graph traversal for runs, spans, commits, artifacts, policies, evaluations, and forks;
 - one transaction that publishes both sets of facts;
-- local/offline operation with one daemon-owned directory.
+- local/offline operation with one exclusively owned directory and no mandatory daemon.
 
 ```mermaid
 flowchart TB
-    C["Clients: SDK, CLI, sandbox, FUSE"] --> D["surrealfsd: sole semantic writer"]
-    D --> K["SurrealFS semantic kernel"]
+    E["Embedded Rust SDK"] --> K["surrealfs-core"]
+    R["Foreground mount/sandbox or optional surrealfsd"] --> K
+    C["CLI, FUSE/NFS, MCP, remote Rust client"] --> R
     K --> A["SurrealDB adapter via public Rust SDK"]
     A --> Q["Records + relations + indexes + transactions"]
     Q --> V["SurrealKV: embedded durable storage"]
@@ -290,8 +359,8 @@ The source also exposes an important boundary: `engine-api`, `engine-local`, `da
 the public `surrealdb` crate and checked-in SurrealQL. It must not use the hidden
 `unstable_from_datastore` path.
 
-See the [current source audit](docs/15-current-surrealdb-audit.md) for code paths, test evidence, and
-open issues.
+The exact revalidation evidence and rerun checklist live in the
+[implementation plan](RUST_SDK_PLAN.md#engine-pin-revalidation-checklist).
 
 ## What is proven and what is not
 
@@ -327,7 +396,8 @@ Commit a small senior team to produce:
    ordered mutations, graph edges, branch movement, and idempotency evidence;
 2. a transactional tool workspace that groups physical filesystem operations into one logical action;
 3. propagation of scoped action identity into a real subprocess tree, with explicit detection of
-   unknown or bypassed writes;
+   unknown or bypassed writes and a receipt that distinguishes verified API inputs, declared inputs,
+   conservative workspace scope, and unknown external inputs;
 4. deterministic before/after-commit kill tests plus reopen verification;
 5. the SurrealDB/SurrealKV implementation measured against a pure reference model and representative
    workloads, with AgentFS used only as a competitor benchmark where operations are comparable;
@@ -336,10 +406,19 @@ Commit a small senior team to produce:
 7. an engine-independent logical export/restore whose receipts and state roots verify independently;
 8. a shutdown/reopen/lock-release contract test using only public SDK APIs;
 9. a legal decision on the pinned SurrealDB distribution model;
-10. discovery evidence from 5–10 design partners, with at least three willing to test the prototype.
+10. discovery evidence from 5–10 teams already using Git, tracing, and sandbox/checkpoint recovery,
+    with at least three reporting a remaining high-cost problem and willing to test the prototype;
+11. separate written results for SurrealDB/SurrealKV R&D and SurrealFS product demand, so success on
+    one scorecard cannot silently pass the other;
+12. an incumbent-response analysis explaining what remains if AgentFS or a runtime vendor adds
+    action receipts to its existing distribution;
+13. a feature-versus-standalone decision: ship the kernel inside Spectron/a design-partner runtime by
+    default unless evidence justifies the additional distribution and product surface.
 
-The Phase 0 report records the practical distribution gap versus AgentFS, but implementation remains
-a new SurrealFS stack. It does not evaluate or fund an AgentFS extension.
+The Phase 0 report records the practical distribution gap versus AgentFS. The persistence and causal
+kernel are new because their invariants differ, while generic Rust components, AgentFS-compatible
+behavior/tests, and proven `dofs` techniques are reused where audits permit. This does not require an
+AgentFS extension or a rewrite of commodity mount/sandbox machinery.
 
 ### Approve next only if Phase 0 passes
 
@@ -351,9 +430,9 @@ Build one end-to-end workflow:
 Keep the interface direct and SDK-first. Add broad FUSE compatibility, multi-user hosting, general
 merge, and multiple engines only after repeated workflow adoption.
 
-The workflow proof must measure recovery time, rerun cost, correct first-divergence identification,
-safe rollback/fork selection, and repeated use. Feature enthusiasm or graph-browser usage is not an
-exit criterion.
+The workflow proof must measure human investigation time, shared-state contamination, proof effort,
+rerun cost where material, correct first-divergence identification, safe rollback/fork selection,
+repeated use, and willingness to pay. Feature enthusiasm or graph-browser usage is not an exit criterion.
 
 ### Stop or narrow if
 
@@ -362,9 +441,31 @@ exit criterion.
 - logical recovery cannot reproduce state roots;
 - licensing makes the intended economics unacceptable;
 - design partners do not repeatedly use a workflow that requires causal state;
+- current Git, rewind, tracing, and snapshot tools solve the incidents at acceptable cost;
+- integrations remain observed sidecars and cannot reach the authoritative mutation boundary;
+- the desired recovery value requires exact arbitrary POSIX read attribution rather than API,
+  declared, or conservative dependency evidence;
+- an incumbent can copy receipts/recovery without SurrealFS retaining a cross-runtime advantage;
 - the graph remains a demo surface rather than part of recovery, evaluation, or governance.
 
 ## Likely questions
+
+### Is `surrealfsd` required?
+
+No. The first proof opens `surrealfs-core` directly through the Rust SDK. FUSE, NFS, MCP, and
+sandboxed unmodified tools require a process to stay alive for their session, but that can be a
+foreground `surrealfs mount`, `serve`, or `run` process. `surrealfsd` is an optional service for
+multiple clients, remote access, centralized policy, persistent reconciliation, and managed
+lifecycle. Atomicity belongs to the kernel and store transaction, not to RPC.
+
+### Can SurrealFS know everything a subprocess read?
+
+No, not through a generic POSIX surface. FUSE/NFS requests, syscall traces, readahead, page-cache
+activity, and mappings do not prove which bytes affected program behavior, and a process may read
+outside the workspace. SurrealFS can record those observations, but they do not become exact
+dependency edges. Exact input identity comes from mediated SDK/tool APIs; otherwise the receipt uses
+declared inputs, a conservative whole-root/subtree scope, or `UNKNOWN`. Exact publication and
+pre-action forks remain valid even when selective recovery must be refused.
 
 ### Is this just Git for agents?
 
@@ -396,8 +497,10 @@ fork over destructive selective undo when work is interleaved.
 
 They are execution and isolation backends, not enemies to replace. Whole-environment snapshots are
 excellent for restoration but comparatively opaque for explanation and minimal recovery. SurrealFS
-should run inside or alongside them, attach semantic state receipts to their checkpoints, and avoid
-building its own VM or untrusted-code boundary.
+may run inside them, but exact causality requires it to own the workspace state or participate in the
+same authoritative checkpoint transaction. Running alongside and attaching a receipt later is
+`OBSERVED` only. SurrealFS should avoid building its own VM boundary unless the sandbox product is
+independently justified.
 
 ### Is the execution ontology the moat?
 
@@ -409,16 +512,18 @@ link.
 ### Why not SQLite?
 
 SQLite is a mature database and useful context for understanding AgentFS, but it is not a SurrealFS
-implementation option. SurrealFS is intentionally built from scratch on embedded SurrealDB over
+storage option. SurrealFS implements its persistence and causal kernel on embedded SurrealDB over
 SurrealKV so state, immutable roots, provenance relations, and product queries share one canonical
 store. If that fixed stack cannot satisfy the contract, the project stops or narrows rather than
 quietly becoming a different storage project.
 
 ### Is SurrealDB the lock-in?
 
-No. The domain command protocol, application commits, canonical IDs, state roots, and logical export
-are the durable product contract. Database types do not cross the adapter. If replacement cannot be
-done without redefining product semantics, the architecture has failed.
+It is the deliberate physical implementation commitment for this plan. The domain commands,
+application commits, canonical IDs, roots, and logical export remain database-independent so users
+can verify and recover their data, but no alternate production adapter is promised. If the fixed
+SurrealDB/SurrealKV stack fails its gates, the project stops or narrows rather than quietly switching
+to SQLite.
 
 ### Can SurrealFS replay an agent deterministically?
 
@@ -428,10 +533,11 @@ must label this distinction honestly.
 
 ## The ask
 
-Approve the Phase 0 evidence package and the coding-agent recovery/fork wedge in the AgentFS/TigerFS
-market. Judge the result on causal completeness, crash safety, correct recovery decisions, repeated
-workflow adoption, recovery time, and engine replaceability—not on the novelty of the database
-choice.
+Approve the Phase 0 evidence package and test the shared-state proof/recovery hypothesis in the
+AgentFS/TigerFS market. Use a coding-agent recovery/fork sequence as the demo, not as assumed market
+validation. Judge the result on causal completeness, authoritative integration, crash safety,
+correct recovery decisions, repeated workflow adoption, human outcome improvement, and willingness
+to pay—not on the novelty of the database choice.
 
 If those proofs pass, SurrealFS has a credible route to becoming the system of record for how agents
 transform state. If they fail, the gates prevent an expensive filesystem rewrite from becoming the
